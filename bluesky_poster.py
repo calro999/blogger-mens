@@ -15,7 +15,7 @@ BLUESKY_ENGAGEMENT_FILE = "bluesky_engagement_history.txt"
 LATEST_POST_FILE = "latest_blogger_post.json"
 
 BLUESKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "tigyu-cosme.bsky.social")
-BLUESKY_APP_PASSWORD = os.environ.get("BLUESKY_APP_PASSWORD", "")
+BLUESKY_APP_PASSWORD = os.environ.get("BLUESKY_APP_PASSWORD", "ebeq-ainb-o63m-tfwc")
 
 # ユーザー規則に基づく最新Gemini対応モデル一覧（Gemini 1.5は完全廃止済みのため除外）
 GEMINI_MODELS = [

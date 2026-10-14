@@ -34,8 +34,9 @@ jobs:
       - name: Run Bluesky Post
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE || 'tigyu-cosme.bsky.social' }}
-          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD || 'ebeq-ainb-o63m-tfwc' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
         run: python bluesky_poster.py
 
       - name: Commit and Push Bluesky History
