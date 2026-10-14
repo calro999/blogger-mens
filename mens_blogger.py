@@ -735,9 +735,7 @@ def post_to_blogger(title, content):
                     time.sleep(3.0)
 
                 if not editor_opened:
-                    print("[BLOGGER-WARN] Google Blogger returned RESOURCE_EXHAUSTED / 302 redirect. Post editor did not open.")
-                    print("[BLOGGER-WARN] Gracefully skipping Blogger DOM injection to avoid crashing action.")
-                    return f"https://mens-cosmet.blogspot.com"
+                    raise RuntimeError("Blogger editor could not be opened (Google rate limit / RESOURCE_EXHAUSTED or button not found).")
 
                 max_retries = 3
                 success = False
@@ -805,8 +803,7 @@ def post_to_blogger(title, content):
                     time.sleep(2)
 
                 if not success:
-                    print("[BLOGGER-WARN] Body injection could not be validated. Continuing safely.")
-                    return f"https://mens-cosmet.blogspot.com"
+                    raise RuntimeError("Critical: Body injection could not be validated after multiple attempts.")
 
 
                 # 公開処理
