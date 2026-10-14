@@ -307,9 +307,9 @@ def fetch_rakuten_mens_items(count=5):
 
         if any(ng in name for ng in ng_words):
             continue
-        if price < 500: # 安価すぎるサンプルやアクセサリを除外
+        if price < 300: # 安価すぎるサンプル等を除外
             continue
-        if code and code not in posted_cache:
+        if code and code not in posted_cache and not any(x.get("itemCode") == code for x in selected_items):
             it["cleanName"] = clean_rakuten_item_name(name)
             it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
             it["imgUrl"] = extract_image_url(it)
@@ -317,14 +317,14 @@ def fetch_rakuten_mens_items(count=5):
             if len(selected_items) >= count:
                 break
 
-    if len(selected_items) < 3:
-        # もし過去の投稿で埋まっていて3個未満なら、キャッシュ関係なく評価の高い順に補う
+    if len(selected_items) < count:
         for item_wrapper in items_raw:
             it = item_wrapper.get("Item", {})
+            code = it.get("itemCode")
             name = it.get("itemName", "")
             if any(ng in name for ng in ng_words):
                 continue
-            if not any(x.get("itemCode") == it.get("itemCode") for x in selected_items):
+            if not any(x.get("itemCode") == code for x in selected_items):
                 it["cleanName"] = clean_rakuten_item_name(name)
                 it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
                 it["imgUrl"] = extract_image_url(it)
@@ -508,11 +508,19 @@ def generate_curated_mens_article(theme_obj, items):
 
     if not parsed:
         print("Fallback: LLM generation was incomplete or non-JSON. Generating clean curated fallback.")
-        default_title = theme_obj["title_template"].format(month=current_month, count=count)
+        random_prefixes = [
+            f"{current_month}月最新！男を上げる",
+            f"{current_month}月厳選！清潔感をつくる",
+            f"2026年{current_month}月版！男の肌・身だしなみを劇的に整える",
+            f"{current_month}月おすすめ！失敗しない",
+            f"大人の清潔感！{current_month}月注目の"
+        ]
+        chosen_prefix = random.choice(random_prefixes)
+        default_title = f"{chosen_prefix}{theme_obj['theme'].replace('選抜', '')}{count}選"
         
         body_parts = []
         body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.8; color: #222; font-family: sans-serif;">')
-        body_parts.append(f'<p>清潔感のある肌や身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。今回は{current_month}月にチェックしておきたい注目のメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
+        body_parts.append(f'<p>清潔感のある肌や整えられた身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。今回は{current_month}月にチェックしておきたい注目のメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
         
         for idx, it in enumerate(items, 1):
             name = it["cleanName"]
@@ -526,7 +534,7 @@ def generate_curated_mens_article(theme_obj, items):
             body_parts.append(f'<p>{it.get("itemCaption", "")[:180]}...</p>')
             body_parts.append(f'<div style="text-align:center; margin:15px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 24px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none;">🛒 楽天市場で詳細・在庫を見る</a></div>')
             
-        body_parts.append(f'<h4 style="margin-top: 30px;">まとめ</h4><p>自分の肌質やライフスタイルに合ったアイテムを取り入れて、毎日の身だしなみと清潔感をアップデートしていきましょう！</p>')
+        body_parts.append(f'<h4 style="margin-top: 30px;">まとめ</h4><p>自分の悩みやライフスタイルに合ったアイテムを取り入れて、毎日の身だしなみと清潔感をアップデートしていきましょう！</p>')
         body_parts.append('</div>')
         
         parsed = {
