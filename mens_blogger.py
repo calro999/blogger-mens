@@ -253,13 +253,19 @@ def get_rakuten_affiliate_url(item, affiliate_id):
     return item_url
 
 def extract_image_url(item):
+    url = ""
     medium_images = item.get("mediumImageUrls", [])
     if medium_images:
-        return medium_images[0].get("imageUrl", "") if isinstance(medium_images[0], dict) else medium_images[0]
-    small_images = item.get("smallImageUrls", [])
-    if small_images:
-        return small_images[0].get("imageUrl", "") if isinstance(small_images[0], dict) else small_images[0]
-    return ""
+        url = medium_images[0].get("imageUrl", "") if isinstance(medium_images[0], dict) else medium_images[0]
+    elif item.get("smallImageUrls"):
+        small_images = item.get("smallImageUrls", [])
+        url = small_images[0].get("imageUrl", "") if isinstance(small_images[0], dict) else small_images[0]
+    
+    if url:
+        # 楽天のサムネイル縮小パラメータ（?_ex=128x128等）を高解像度700x700に昇格
+        url = re.sub(r'\?_ex=[0-9]+x[0-9]+', '?_ex=700x700', url)
+    return url
+
 
 def fetch_rakuten_mens_items(count=5):
     """メンズコスメ・身だしなみテーマから重複を避け指定個数（通常5点）選抜"""
@@ -286,15 +292,33 @@ def fetch_rakuten_mens_items(count=5):
         params["affiliateId"] = affiliate_id
 
     response = requests.get(url, params=params, timeout=20)
-    if response.status_code != 200:
-        raise RuntimeError(f"Failed to fetch from Rakuten API: {response.status_code} - {response.text}")
-
-    data = response.json()
+    data = response.json() if response.status_code == 200 else {}
     items_raw = data.get("Items", [])
+
+    # キーワードが長すぎて0件の場合は単語を絞り込んでフォールバック検索
+    if not items_raw and len(keyword.split()) > 2:
+        fallback_keyword = " ".join(keyword.split()[:2])
+        print(f"Fallback search with simplified keyword: '{fallback_keyword}'")
+        params["keyword"] = fallback_keyword
+        fb_resp = requests.get(url, params=params, timeout=20)
+        if fb_resp.status_code == 200:
+            items_raw = fb_resp.json().get("Items", [])
+
+    if not items_raw:
+        # 別のテーマでリトライ
+        alt_theme = random.choice([t for t in MENS_THEMES if t != theme_obj])
+        print(f"Retrying with alternative theme: {alt_theme['theme']}")
+        params["keyword"] = alt_theme["keyword"]
+        theme_obj = alt_theme
+        alt_resp = requests.get(url, params=params, timeout=20)
+        if alt_resp.status_code == 200:
+            items_raw = alt_resp.json().get("Items", [])
+
     if not items_raw:
         raise RuntimeError(f"No items found for keyword: {keyword}")
 
     posted_cache = load_posted_cache()
+
     selected_items = []
     
     ng_words = ["リサイクル", "回収", "利用券", "チケット", "処分", "修理", "女性用", "レディース", "中古"]

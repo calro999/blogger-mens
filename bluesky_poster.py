@@ -62,30 +62,59 @@ def optimize_image_bytes(raw_bytes, max_bytes=850000):
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         
-        max_dim = 1200
+        max_dim = 1600
         if max(img.size) > max_dim:
             img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
         
-        quality = 85
-        while quality >= 35:
+        quality = 90
+        while quality >= 50:
             out = io.BytesIO()
             img.save(out, format="JPEG", quality=quality, optimize=True)
             res = out.getvalue()
             if len(res) <= max_bytes:
                 return res
-            quality -= 15
+            quality -= 10
         return res
     except Exception as e:
         print(f"[WARN] Image optimization failed: {e}")
         return raw_bytes[:max_bytes] if len(raw_bytes) > 2000000 else raw_bytes
 
 def fetch_item_image_bytes(image_url):
-    """商品画像URLから画像バイトを取得し軽量化"""
+    """
+    商品画像URLから高解像度のオリジナル画像バイトを取得し、クリアな画質を維持したまま最適化
+    楽天サムネイル（?_ex=128x128）を700x700またはオリジナルURLへ昇格
+    """
     if not image_url:
         return None
+
+    # 高画質URL候補のリスト
+    candidates = []
+    # 1. 700x700 高解像度サムネイル
+    if "_ex=" in image_url:
+        candidates.append(re.sub(r'\?_ex=[0-9]+x[0-9]+', '?_ex=700x700', image_url))
+    # 2. クエリパラメータ全削除（原寸大）
+    clean_url = image_url.split("?")[0]
+    candidates.append(clean_url)
+    # 3. オリジナルサーバー（image.rakuten.co.jp）
+    if "@0_mall/" in clean_url:
+        orig_url = clean_url.replace("https://thumbnail.image.rakuten.co.jp/@0_mall/", "https://image.rakuten.co.jp/")
+        candidates.append(orig_url)
+    # 4. 元のURL
+    candidates.append(image_url)
+
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    for u in candidates:
+        try:
+            res = requests.get(u, headers=headers, timeout=10)
+            if res.status_code == 200 and len(res.content) > 10000:
+                print(f"[IMAGE-HD] Fetched high-res image from: {u[:80]}... ({len(res.content)} bytes)")
+                return optimize_image_bytes(res.content)
+        except Exception:
+            continue
+
+    # フォールバック
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        res = requests.get(image_url, headers=headers, timeout=12)
+        res = requests.get(image_url, headers=headers, timeout=10)
         if res.status_code == 200 and len(res.content) > 1000:
             return optimize_image_bytes(res.content)
     except Exception as e:
@@ -96,12 +125,16 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
     """
     最新Geminiモデルを活用し、「チー牛ラボ 〜劇的垢抜けアイテム研究〜」として
     AI臭さのないリアルで熱量の高い推薦ポスト文を生成。
-    「垢抜けたいならこれを使え！」「これがおすすめだ！」を軸に毎回異なるトーンで作成。
+    現在の季節・時期（10月・秋など）に厳格に合わせたリアルなトーンで作成。
     """
     clean_name = item.get("cleanName") or item.get("itemName") or "厳選アイテム"
     price = item.get("itemPrice", "")
     price_info = f"（約{price:,}円）" if price else ""
     gemini_key = os.environ.get("GEMINI_API_KEY")
+
+    now = datetime.now()
+    cur_month = now.month
+    cur_season = "秋" if cur_month in [9, 10, 11] else ("冬" if cur_month in [12, 1, 2] else ("春" if cur_month in [3, 4, 5] else "夏"))
 
     # 多彩な切り口（テンプレート使い回しを完全に禁止）
     hooks_angles = [
@@ -117,6 +150,10 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
 あなたはBlueskyアカウント「チー牛ラボ 〜劇的垢抜けアイテム研究〜」（@tigyu-cosme.bsky.social）の運営者です。
 元々垢抜けずに悩み、メンズ美容やスキンケアで劇的に人生が変わった男性が、リアルな本音で投稿します。
 
+【現在の時期・季節】
+- 現在は {cur_month}月（{cur_season}）です。
+- ※重要：過去や時期外れの季節（例: 秋なのに「夏前」「真夏」など）に関する言及は【完全厳禁】です。今の時期（{cur_month}月・{cur_season}の乾燥対策や季節の変わり目、秋冬の身だしなみ）、または年中通して使える清潔感アップ習慣として語ってください。
+
 【今回の厳選アイテム】
 - テーマ: {theme_name}
 - 商品名: {clean_name} {price_info}
@@ -129,7 +166,8 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
 4. この商品を使うことでどう劇的に垢抜けるのか、何が他のものと違うのかを具体的に1〜2点だけ絞って熱く語ってください。
 5. 出力は「推薦本文のみ（100〜140文字程度）」にしてください。URLやハッシュタグはシステムが後から付与するので、本文中にはURL・ハッシュタグ・挨拶を含めないでください。
 """
-    system_instruction = "あなたは「チー牛ラボ 〜劇的垢抜けアイテム研究〜」の熱狂的な男性美容研究者です。AI臭さを徹底的に排除した、生々しく説得力のあるリアルな本音ポスト文のみを出力します。"
+    system_instruction = f"あなたは「チー牛ラボ 〜劇的垢抜けアイテム研究〜」の熱狂的な男性美容研究者です。現在は{cur_month}月（{cur_season}）です。季節感を絶対に間違えず、AI臭さを徹底的に排除した、生々しく説得力のあるリアルな本音ポスト文のみを出力します。"
+
 
     text = None
     if gemini_key:
