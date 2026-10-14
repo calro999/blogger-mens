@@ -767,8 +767,25 @@ def post_to_blogger(title, content):
                     print("Confirm button fallback with Enter:", e)
                     page.keyboard.press('Enter')
 
-                time.sleep(10)
+                time.sleep(6)
                 print("Successfully published curated mens cosmetic article to Blogger!")
+
+                # 公開された最新記事のURLを取得
+                published_post_url = f"https://mens-cosmet.blogspot.com"
+                try:
+                    time.sleep(2)
+                    page.goto(f"https://draft.blogger.com/blog/posts/{blog_id}", wait_until="networkidle")
+                    time.sleep(3)
+                    post_link_el = page.locator('a[href*=".blogspot.com/"][aria-label*="表示"], a[href*=".blogspot.com/"][aria-label*="View"], a[href*=".blogspot.com/20"]').first
+                    if post_link_el.is_visible(timeout=5000):
+                        href = post_link_el.get_attribute("href")
+                        if href and "blogspot.com" in href:
+                            published_post_url = href
+                            print(f"[BLOGGER-URL] Retrieved published post URL: {published_post_url}")
+                except Exception as ue:
+                    print(f"[BLOGGER-URL-WARN] Could not retrieve specific post URL, using base URL: {ue}")
+
+                return published_post_url
 
             except Exception as e:
                 print(f"Error during Blogger operation: {e}")
@@ -799,15 +816,35 @@ def main():
         final_html = strict_quality_check_and_refine(title, html_content, items)
 
         # 4. Bloggerへ自動投稿（room投稿は行わない）
-        post_to_blogger(title, final_html)
+        blogger_post_url = post_to_blogger(title, final_html)
+        print(f"Blogger Publication Complete: {blogger_post_url}")
 
         # 5. キャッシュ保存
         save_to_cache(item_codes)
-        print("All processes finished successfully!")
+
+        # 6. ブルースカイへの自動投稿（チー牛ラボ 〜劇的垢抜けアイテム研究〜）
+        try:
+            print("\n=== Triggering Bluesky Auto-Post for 'チー牛ラボ' ===")
+            from bluesky_poster import post_to_bluesky_from_blogger, save_latest_blogger_post_info
+            # 最新記事情報を保存
+            save_latest_blogger_post_info(blogger_post_url, title, theme_obj, items)
+            # Blueskyへ投稿
+            post_to_bluesky_from_blogger(
+                blogger_url=blogger_post_url,
+                article_title=title,
+                theme_obj=theme_obj,
+                items=items
+            )
+        except Exception as be:
+            print(f"[WARN] Bluesky posting failed or deferred: {be}")
+
+        print("\nAll processes finished successfully! (Blogger + Bluesky)")
 
     except Exception as e:
         print(f"Fatal error in main: {e}")
         exit(1)
 
+
 if __name__ == "__main__":
     main()
+

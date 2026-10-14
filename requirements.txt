@@ -2,3 +2,6 @@ requests
 playwright
 openai
 anthropic
+atproto
+Pillow
+

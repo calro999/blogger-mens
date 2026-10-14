@@ -6,6 +6,8 @@ on:
     # UTC: 23:30, 03:30, 07:30, 10:30, 13:30
     - cron: '30 23,3,7,10,13 * * *'
   workflow_dispatch:
+  repository_dispatch:
+    types: [cron_job, auto_post, blogger_post, run]
 
 permissions:
   contents: write
@@ -20,8 +22,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          cache: 'pip'
+            python-version: '3.10'
+            cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -31,7 +33,7 @@ jobs:
       - name: Install Playwright Browsers
         run: playwright install --with-deps chromium
 
-      - name: Run Mens Blogger Post Script
+      - name: Run Mens Blogger and Bluesky Post Script
         env:
           RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
           RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
@@ -40,17 +42,18 @@ jobs:
           BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE || 'tigyu-cosme.bsky.social' }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
         run: python mens_blogger.py
 
-      - name: Commit and Push Cache Update
+      - name: Commit and Push Cache & History Update
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -f posted_cache.txt ]; then
-            git add posted_cache.txt
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: update posted cache [skip ci]"
-              git pull --rebase origin main || true
-              git push origin main || git push || true
-            fi
+          git add posted_cache.txt latest_blogger_post.json bluesky_post_history.txt bluesky_engagement_history.txt 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update blogger and bluesky history [skip ci]"
+            git pull --rebase origin main || true
+            git push origin main || git push || true
           fi
+
