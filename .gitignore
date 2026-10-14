@@ -1,5 +1,8 @@
 .venv/
 client_secret.json
 token.json
+session.json
+.env
+*.png
 __pycache__/
 *.pyc

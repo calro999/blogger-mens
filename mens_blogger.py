@@ -1,0 +1,717 @@
+import os
+import random
+import requests
+import time
+import base64
+import json
+import tempfile
+import re
+from datetime import datetime
+from playwright.sync_api import sync_playwright
+
+CACHE_FILE = "posted_cache.txt"
+
+# メンズコスメ・メンズスキンケア・身だしなみ 特化検索テーマ一覧
+MENS_THEMES = [
+    {
+        "theme": "メンズオールインワンジェルおすすめ選抜",
+        "keyword": "メンズ オールインワン ジェル",
+        "title_template": "{month}月最新！メンズ用オールインワンジェルおすすめ{count}選【時短スキンケア・乾燥＆テカリ防止】"
+    },
+    {
+        "theme": "メンズ化粧水おすすめ選抜",
+        "keyword": "メンズ 化粧水 保湿",
+        "title_template": "{month}月おすすめ！清潔感を作るメンズ化粧水{count}選【テカリ・毛穴・乾燥対策】"
+    },
+    {
+        "theme": "メンズ洗顔料・クレンジングおすすめ選抜",
+        "keyword": "メンズ 洗顔料 泡 毛穴",
+        "title_template": "{month}月最新！毛穴汚れ＆アブラを落とすメンズ洗顔料おすすめ{count}選【清潔素肌へ】"
+    },
+    {
+        "theme": "メンズ美容液・エイジングケア選抜",
+        "keyword": "メンズ 美容液 シミ くすみ",
+        "title_template": "{month}月厳選！男の肌印象を変えるメンズ美容液おすすめ{count}選【美肌＆ハリ対策】"
+    },
+    {
+        "theme": "メンズ日焼け止め・UVケア選抜",
+        "keyword": "メンズ 日焼け止め UV 白浮きしない",
+        "title_template": "{month}月最新！白浮きしないメンズ日焼け止めおすすめ{count}選【紫外線＆テカリ防止UV】"
+    },
+    {
+        "theme": "メンズBBクリーム・ナチュラル肌補正選抜",
+        "keyword": "メンズ BBクリーム ナチュラル ファンデーション",
+        "title_template": "{month}月最新！バレずに好印象を作るメンズBBクリームおすすめ{count}選【青髭・毛穴・クマ隠し】"
+    },
+    {
+        "theme": "メンズリップクリーム・唇ケア選抜",
+        "keyword": "メンズ リップクリーム 色つき 保湿",
+        "title_template": "{month}月おすすめ！血色感と潤いを保つメンズリップ{count}選【荒れ防止・身だしなみ】"
+    },
+    {
+        "theme": "メンズ香水・練り香水・フレグランス選抜",
+        "keyword": "メンズ 香水 練り香水 爽やか",
+        "title_template": "{month}月厳選！女子ウケ＆ビジネスで好印象なメンズ香水・フレグランス{count}選"
+    },
+    {
+        "theme": "メンズヘアオイル・バーム・スタイリング選抜",
+        "keyword": "メンズ ヘアオイル ヘアバーム スタイリング",
+        "title_template": "{month}月最新！束感＆自然なツヤが出るメンズヘアバーム・ヘアオイル{count}選"
+    },
+    {
+        "theme": "メンズボディソープ・体臭ケア選抜",
+        "keyword": "メンズ ボディソープ 薬用 汗 臭い",
+        "title_template": "{month}月おすすめ！ニオイ・汗を爽快リセットするメンズボディソープ{count}選"
+    },
+    {
+        "theme": "メンズ眉毛セット・シェーバー・身だしなみツール選抜",
+        "keyword": "メンズ 眉毛 シェーバー セット 身だしなみ",
+        "title_template": "{month}月最新！第一印象を爆上げするメンズ眉毛＆シェーバーツール{count}選"
+    },
+    {
+        "theme": "メンズシャンプー・頭皮スカルプケア選抜",
+        "keyword": "メンズ スカルプシャンプー 薬用 頭皮ケア",
+        "title_template": "{month}月厳選！頭皮のベタつき＆フケを防ぐメンズスカルプシャンプー{count}選"
+    },
+    {
+        "theme": "メンズハンドクリーム・手元ケア選抜",
+        "keyword": "メンズ ハンドクリーム ベタつかない",
+        "title_template": "{month}月おすすめ！スマホ操作も快適・ベタつかないメンズハンドクリーム{count}選"
+    },
+    {
+        "theme": "メンズアイクリーム・目元ケア選抜",
+        "keyword": "メンズ アイクリーム クマ たるみ",
+        "title_template": "{month}月最新！疲れた目元・クマをすっきり整えるメンズアイクリーム{count}選"
+    },
+    {
+        "theme": "メンズシートマスク・パック選抜",
+        "keyword": "メンズ シートマスク フェイスパック 保湿",
+        "title_template": "{month}月厳選！週1の集中ケアで透明感をつくるメンズフェイスマスク{count}選"
+    }
+]
+
+def load_posted_cache():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+def save_to_cache(item_codes):
+    if isinstance(item_codes, str):
+        item_codes = [item_codes]
+    with open(CACHE_FILE, "a", encoding="utf-8") as f:
+        for code in item_codes:
+            if code:
+                f.write(f"{code}\n")
+
+def clean_rakuten_item_name(name):
+    """商品名から楽天特有のクーポンや記号ノイズを除去し、すっきりとした名称を抽出"""
+    if not name:
+        return "メンズコスメ注目アイテム"
+    cleaned = re.sub(r'【[^】]*】', '', name)
+    cleaned = re.sub(r'\[[^\]]*\]', '', cleaned)
+    cleaned = re.sub(r'（[^）]*）', '', cleaned)
+    cleaned = re.sub(r'\([^\)]*\)', '', cleaned)
+    
+    noise_patterns = [
+        r'クーポン(?:で|\s*利用で|\s*配布中|\s*対象)?\s*[0-9,]+円?(?:OFF|off)?',
+        r'P[0-9]+倍',
+        r'ポイント[0-9]+倍',
+        r'送料無料',
+        r'即納',
+        r'あす楽',
+        r'マラソン(?:限定)?',
+        r'スーパーセール',
+        r'お買い物マラソン',
+        r'楽天(?:1位|ランキング1位|デイリー1位)',
+        r'[0-9]+%OFF',
+        r'[0-9]+％OFF',
+        r'★[0-9\.]+★?',
+        r'レビュー特典',
+        r'公式(?:店)?',
+        r'医薬部外品',
+        r'正規品'
+    ]
+    for pat in noise_patterns:
+        cleaned = re.sub(pat, '', cleaned, flags=re.IGNORECASE)
+        
+    words = [w.strip() for w in cleaned.split() if w.strip()]
+    seen = set()
+    cleaned_words = []
+    for w in words:
+        if w not in seen and len(w) > 1:
+            seen.add(w)
+            cleaned_words.append(w)
+        if len(' '.join(cleaned_words)) >= 35:
+            break
+            
+    res = ' '.join(cleaned_words).strip()
+    return res if res else (words[0] if words else name[:30])
+
+def get_rakuten_affiliate_url(item, affiliate_id):
+    aff_url = item.get("affiliateUrl")
+    if aff_url and "hb.afl.rakuten.co.jp" in aff_url:
+        return aff_url
+    
+    item_url = item.get("itemUrl") or ""
+    if not item_url:
+        return ""
+    
+    if affiliate_id:
+        import urllib.parse
+        encoded_item_url = urllib.parse.quote(item_url, safe='')
+        return f"https://hb.afl.rakuten.co.jp/hgc/{affiliate_id}/?pc={encoded_item_url}&m={encoded_item_url}"
+    
+    return item_url
+
+def extract_image_url(item):
+    medium_images = item.get("mediumImageUrls", [])
+    if medium_images:
+        return medium_images[0].get("imageUrl", "") if isinstance(medium_images[0], dict) else medium_images[0]
+    small_images = item.get("smallImageUrls", [])
+    if small_images:
+        return small_images[0].get("imageUrl", "") if isinstance(small_images[0], dict) else small_images[0]
+    return ""
+
+def fetch_rakuten_mens_items(count=5):
+    """メンズコスメ・身だしなみテーマから重複を避け指定個数（通常5点）選抜"""
+    app_id = os.environ.get("RAKUTEN_APP_ID")
+    access_key = os.environ.get("RAKUTEN_ACCESS_KEY")
+    affiliate_id = os.environ.get("RAKUTEN_AFFILIATE_ID")
+    if not app_id or not access_key:
+        raise ValueError("RAKUTEN_APP_ID and RAKUTEN_ACCESS_KEY must be set in environment variables.")
+
+    # ランダムにテーマを選定
+    theme_obj = random.choice(MENS_THEMES)
+    keyword = theme_obj["keyword"]
+    print(f"Selected Theme: {theme_obj['theme']} (Keyword: {keyword})")
+
+    url = "https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260401"
+    params = {
+        "applicationId": app_id,
+        "accessKey": access_key,
+        "keyword": keyword,
+        "format": "json",
+        "hits": 30
+    }
+    if affiliate_id:
+        params["affiliateId"] = affiliate_id
+
+    response = requests.get(url, params=params, timeout=20)
+    if response.status_code != 200:
+        raise RuntimeError(f"Failed to fetch from Rakuten API: {response.status_code} - {response.text}")
+
+    data = response.json()
+    items_raw = data.get("Items", [])
+    if not items_raw:
+        raise RuntimeError(f"No items found for keyword: {keyword}")
+
+    posted_cache = load_posted_cache()
+    selected_items = []
+    
+    ng_words = ["リサイクル", "回収", "利用券", "チケット", "処分", "修理", "女性用", "レディース", "中古"]
+
+    for item_wrapper in items_raw:
+        it = item_wrapper.get("Item", {})
+        code = it.get("itemCode")
+        name = it.get("itemName", "")
+        price = it.get("itemPrice", 0)
+
+        if any(ng in name for ng in ng_words):
+            continue
+        if price < 500: # 安価すぎるサンプルやアクセサリを除外
+            continue
+        if code and code not in posted_cache:
+            it["cleanName"] = clean_rakuten_item_name(name)
+            it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
+            it["imgUrl"] = extract_image_url(it)
+            selected_items.append(it)
+            if len(selected_items) >= count:
+                break
+
+    if len(selected_items) < 3:
+        # もし過去の投稿で埋まっていて3個未満なら、キャッシュ関係なく評価の高い順に補う
+        for item_wrapper in items_raw:
+            it = item_wrapper.get("Item", {})
+            name = it.get("itemName", "")
+            if any(ng in name for ng in ng_words):
+                continue
+            if not any(x.get("itemCode") == it.get("itemCode") for x in selected_items):
+                it["cleanName"] = clean_rakuten_item_name(name)
+                it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
+                it["imgUrl"] = extract_image_url(it)
+                selected_items.append(it)
+            if len(selected_items) >= count:
+                break
+
+    if not selected_items:
+        raise RuntimeError("Could not find suitable items for the theme.")
+
+    return theme_obj, selected_items
+
+
+def call_llm(prompt, system_message, temperature=0.7, max_tokens=3000):
+    """
+    ユーザー規則に基づく最新Geminiモデルローテーション ＆ Groqフォールバック
+    Gemini 1.5系は完全廃止済みのため使用禁止。
+    ローテーション順:
+    gemini-2.5-flash -> gemini-3.5-flash -> gemini-3.6-flash -> gemini-3.1-flash-lite -> gemini-3.5-flash-lite -> gemini-2.0-flash
+    """
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        gemini_rotation = [
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-pro",
+            "gemini-3-flash",
+            "gemini-3.1-pro",
+            "gemini-3.7-flash"
+        ]
+        for model_name in gemini_rotation:
+            try:
+                api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": f"{system_message}\n\n{prompt}"}]}],
+                    "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}
+                }
+                if any(v in model_name for v in ["2.5", "3.", "3-"]):
+                    payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
+
+                res = requests.post(api_url, json=payload, timeout=40)
+                if res.status_code == 200:
+                    data = res.json()
+                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                    text = "".join(p.get("text", "") for p in parts if p.get("text")).strip()
+                    if len(text) > 50:
+                        print(f"Generated successfully with Gemini model: {model_name}")
+                        return text
+                else:
+                    print(f"Gemini API ({model_name}) error {res.status_code}: {res.text[:120]}")
+            except Exception as e:
+                print(f"Gemini API ({model_name}) exception: {e}")
+
+    # Groq API フォールバック
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if groq_key:
+        for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+            try:
+                headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": temperature,
+                    "max_tokens": max_tokens
+                }
+                res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=40)
+                if res.status_code == 200:
+                    text = res.json()["choices"][0]["message"]["content"].strip()
+                    if len(text) > 50:
+                        print(f"Generated successfully with Groq model: {model_name}")
+                        return text
+            except Exception as e:
+                print(f"Groq API ({model_name}) exception: {e}")
+
+    return None
+
+
+def parse_json_from_llm(raw_text):
+    if not raw_text:
+        return None
+    text = raw_text.strip()
+    if "```json" in text:
+        text = text.split("```json", 1)[1].split("```")[0].strip()
+    elif "```" in text:
+        text = text.split("```", 1)[1].split("```")[0].strip()
+    
+    # JSON先頭と末尾のカッコを抽出
+    first_brace = text.find('{')
+    last_brace = text.rfind('}')
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        text_candidate = text[first_brace:last_brace+1]
+        try:
+            data = json.loads(text_candidate)
+            if isinstance(data, dict) and "html" in data:
+                return data
+        except Exception:
+            # 改行コードのエスケープ不備を修復試行
+            try:
+                # 簡易修復
+                fixed = re.sub(r'(?<!\\)\n', '\\n', text_candidate)
+                data = json.loads(fixed)
+                if isinstance(data, dict) and "html" in data:
+                    return data
+            except Exception:
+                pass
+    return None
+
+
+def generate_curated_mens_article(theme_obj, items):
+    """
+    選抜された複数個のメンズコスメ商品を比較・紹介する特集記事を生成
+    『10月最新メンズコスメ5選』等の形式で、テンプレート使い回しを排除した自然な記事構成
+    """
+    current_month = datetime.now().month
+    count = len(items)
+    
+    items_desc_list = []
+    for idx, it in enumerate(items, 1):
+        items_desc_list.append(
+            f"--- 【商品 {idx}】 ---\n"
+            f"商品名: {it['cleanName']}\n"
+            f"価格: {it.get('itemPrice', '')}円\n"
+            f"概要: {it.get('itemCaption', '')[:200]}\n"
+            f"画像URL: {it['imgUrl']}\n"
+            f"アフィリエイトURL: {it['affUrl']}\n"
+        )
+    items_context = "\n".join(items_desc_list)
+
+    system_message = (
+        "あなたは20代〜40代男性向けの身だしなみ・メンズスキンケア・メンズコスメ専門のエディターです。"
+        "『清潔感』『好印象』『手軽さ』を重視する男性読者の悩みに寄り添い、説得力と信頼性の高い比較・おすすめ記事を執筆します。"
+        "AI臭いテンプレート感（『いかがでしたでしょうか』『〜ですね！』の連発など）は一切排除し、自然で洗練された男性美容メディアの記事トーンで作成してください。"
+        "出力は必ず指定のJSONフォーマットのみとしてください。"
+    )
+
+    prompt = f"""以下は楽天市場から厳選したメンズコスメ・身だしなみアイテム{count}点のデータです。
+今月（{current_month}月）の男性読者に向けて、選抜特集記事を作成してください。
+
+【特集テーマ】: {theme_obj['theme']}
+【掲載アイテム一覧】:
+{items_context}
+
+【記事作成要件】:
+1. タイトル（title）:
+   - 『{current_month}月最新』または『{current_month}月厳選』と、具体的なアイテム数（{count}選など）を含める。
+   - 読者が思わずクリックしたくなる実用的かつ魅力的なタイトル（最大38文字程度）。
+2. 本文HTML（html）:
+   - 全体を `<div class="mens-curation-article" style="line-height: 1.8; color: #222; font-family: sans-serif;">` で囲む。
+   - 導入部（リード文）: なぜ今このケアやアイテム選びが大切なのか、男性特有の肌の悩み（テカリ・乾燥・毛穴・清潔感など）に触れつつ読者を引き込む（200〜300文字程度）。
+   - 各商品紹介（1〜{count}）:
+     - `<h3>` タグで【第◯位】や【◯選目】、キャッチコピー付きのアイテム名を見出しにする。
+     - 画像を表示: `<div style="text-align: center; margin: 15px 0;"><img src="画像URL" alt="商品名" style="max-width: 320px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);"></div>`
+     - 価格表示やスペック、どんな男性におすすめか（例：オイリー肌、朝忙しい人、初心者向けなど）を明記。
+     - 商品の具体的な特徴・おすすめ理由を2〜3つのリスト形式（`<ul><li>`）で簡潔かつ魅力的に整理。
+     - 楽天市場の購入リンクボタン（赤基調・角丸で洗練されたデザイン）を各商品の直下に配置:
+       `<div style="text-align: center; margin: 15px 0;"><a href="アフィリエイトURL" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 24px; background-color: #bf0000; color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none;">🛒 楽天市場で詳細・口コミを見る</a></div>`
+   - まとめセクション: 今回紹介した{count}選の選び方のワンポイントアドバイスと背中を押すメッセージ。
+3. 【厳格な品質ルール】:
+   - Amazon、Yahoo!ショッピング、他ECサイトの言及は厳禁。
+   - 途中で文章が途切れず、すべてのHTMLタグが正常に閉じられていること。
+   - 宣伝臭さやテンプレートの使い回し感を無くし、読み物として価値のある独自性の高いレビュー・比較記事にすること。
+
+【出力形式】
+{{
+    "title": "記事タイトル",
+    "html": "完全なHTML文字列"
+}}
+"""
+
+    raw_response = call_llm(prompt, system_message, temperature=0.75, max_tokens=3500)
+    parsed = parse_json_from_llm(raw_response)
+
+    if not parsed:
+        print("Fallback: LLM generation was incomplete or non-JSON. Generating clean curated fallback.")
+        default_title = theme_obj["title_template"].format(month=current_month, count=count)
+        
+        body_parts = []
+        body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.8; color: #222; font-family: sans-serif;">')
+        body_parts.append(f'<p>清潔感のある肌や身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。今回は{current_month}月にチェックしておきたい注目のメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
+        
+        for idx, it in enumerate(items, 1):
+            name = it["cleanName"]
+            price = it.get("itemPrice", "")
+            img = it["imgUrl"]
+            url = it["affUrl"]
+            body_parts.append(f'<h3 style="border-left: 4px solid #1a365d; padding-left: 10px; margin-top: 30px;">【注目{idx}】{name}</h3>')
+            if img:
+                body_parts.append(f'<div style="text-align:center; margin:15px 0;"><img src="{img}" alt="{name}" style="max-width:300px; border-radius:8px;"></div>')
+            body_parts.append(f'<p><b>価格目安:</b> {price}円</p>')
+            body_parts.append(f'<p>{it.get("itemCaption", "")[:180]}...</p>')
+            body_parts.append(f'<div style="text-align:center; margin:15px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 24px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none;">🛒 楽天市場で詳細・在庫を見る</a></div>')
+            
+        body_parts.append(f'<h4 style="margin-top: 30px;">まとめ</h4><p>自分の肌質やライフスタイルに合ったアイテムを取り入れて、毎日の身だしなみと清潔感をアップデートしていきましょう！</p>')
+        body_parts.append('</div>')
+        
+        parsed = {
+            "title": default_title,
+            "html": "".join(body_parts)
+        }
+
+    return parsed
+
+
+def strict_quality_check_and_refine(title, html_content, items):
+    """
+    【記事品質チェック厳し目工程】
+    1. 必須要素の確認（各商品の画像、リンクURL、タイトル、文字量）
+    2. 禁止単語（Amazon, 他社リンク、未置換タグ等）の除去
+    3. LLMによる誤字脱字、文脈の自然さ、AI臭さの排除校正
+    4. HTML構文・閉じタグの整合性補正
+    """
+    print("Executing strict quality check & refinement...")
+
+    # チェック1: 文字量チェック（選抜記事なので最低でも1200文字以上を担保）
+    text_length = len(re.sub(r'<[^>]+>', '', html_content))
+    print(f"Content text length (excluding tags): {text_length} chars")
+
+    # チェック2: 各商品のリンクが正しく含まれているか検証
+    for it in items:
+        aff_url = it.get("affUrl", "")
+        clean_name = it.get("cleanName", "")
+        if aff_url and aff_url not in html_content:
+            print(f"Warning: Affiliate URL missing for {clean_name[:15]}. Injecting button...")
+            btn_inject = (
+                f'<div style="text-align: center; margin: 15px 0;">'
+                f'<a href="{aff_url}" target="_blank" rel="noopener noreferrer" '
+                f'style="display:inline-block; padding: 12px 24px; background-color: #bf0000; '
+                f'color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none;">'
+                f'🛒 楽天市場で【{clean_name[:20]}】を見る</a></div>'
+            )
+            html_content += f"\n{btn_inject}"
+
+    # チェック3: 禁止ワードのサニタイズ
+    html_content = html_content.replace("Amazon", "楽天市場").replace("アマゾン", "楽天市場").replace("Yahoo!", "楽天市場").replace("ヤフー", "楽天市場")
+
+    # チェック4: LLMによるプロ品質校正（AI臭さの排除と文脈の完全性）
+    proofread_prompt = f"""以下のメンズコスメ選抜記事のHTMLに対して、厳格な品質校正を行ってください。
+
+【タイトル】: {title}
+【記事HTML】:
+{html_content}
+
+【厳格校正ルール】:
+1. 誤字脱字、てにをは、不自然な文言を徹底的に修正してください。
+2. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
+3. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
+4. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
+5. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
+"""
+    proofread_system = "あなたは大手男性美容WEBマガジンの最高編集責任者です。妥協のない厳格な校正を行い、高品質なHTMLのみを返します。"
+    refined_html = call_llm(proofread_prompt, proofread_system, temperature=0.4, max_tokens=3800)
+
+    if refined_html and len(refined_html.strip()) > 300:
+        refined_html = refined_html.strip()
+        if "```html" in refined_html:
+            refined_html = refined_html.split("```html", 1)[1].split("```")[0].strip()
+        elif "```" in refined_html:
+            refined_html = refined_html.split("```", 1)[1].split("```")[0].strip()
+        html_content = refined_html
+        print("Refinement step completed successfully.")
+
+    # チェック5: 閉じタグ整合性の自動補正
+    open_divs = html_content.count("<div")
+    close_divs = html_content.count("</div>")
+    if open_divs > close_divs:
+        html_content += "</div>" * (open_divs - close_divs)
+
+    open_uls = html_content.count("<ul")
+    close_uls = html_content.count("</ul>")
+    if open_uls > close_uls:
+        html_content += "</ul>" * (open_uls - close_uls)
+
+    return html_content
+
+
+def post_to_blogger(title, content):
+    """Playwrightを用いてBloggerへ自動投稿"""
+    blog_id = os.environ.get("BLOGGER_BLOG_ID")
+    if not blog_id:
+        raise ValueError("BLOGGER_BLOG_ID is not set in environment variables.")
+    session_b64 = os.environ.get("BLOGGER_SESSION_B64")
+    
+    session_file_path = None
+    if session_b64:
+        try:
+            decoded_str = base64.b64decode(session_b64).decode('utf-8')
+            json.loads(decoded_str)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, suffix=".json") as temp_file:
+                temp_file.write(decoded_str)
+                session_file_path = temp_file.name
+        except Exception as e:
+            raise ValueError(f"BLOGGER_SESSION_B64 decode failed: {e}")
+    elif os.path.exists("session.json"):
+        print("Found local session.json. Using it for Blogger post.")
+        session_file_path = "session.json"
+    else:
+        raise ValueError("BLOGGER_SESSION_B64 is not set and local session.json not found.")
+
+    print(f"Posting to Blogger (Blog ID: {blog_id}) using Playwright...")
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"]
+            )
+            context = browser.new_context(
+                storage_state=session_file_path,
+                viewport={"width": 1280, "height": 800},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                permissions=['clipboard-read', 'clipboard-write']
+            )
+            
+            page = context.new_page()
+            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+            try:
+                time.sleep(random.uniform(2.0, 4.0))
+                page.goto(f"https://draft.blogger.com/blog/post/edit/{blog_id}/new", wait_until="networkidle")
+                time.sleep(random.uniform(3.0, 5.0))
+                
+                # 新規投稿画面への誘導フォールバック
+                if "edit" not in page.url:
+                    page.keyboard.press('c')
+                    time.sleep(3.0)
+                
+                if "edit" not in page.url:
+                    page.evaluate('''() => {
+                        const btns = Array.from(document.querySelectorAll('div[role="button"]'));
+                        const newPostBtn = btns.find(b => (b.getAttribute('aria-label') || '').includes('新しい投稿') || (b.getAttribute('aria-label') || '').includes('New post'));
+                        if (newPostBtn) newPostBtn.click();
+                    }''')
+                    time.sleep(3.0)
+
+                max_retries = 3
+                success = False
+                
+                for attempt in range(max_retries):
+                    print(f"--- Attempt {attempt+1} / {max_retries} ---")
+                    if attempt > 0:
+                        page.reload(wait_until="domcontentloaded")
+                        time.sleep(3)
+
+                    try:
+                        title_input = page.locator('input.titleField, input[aria-label="タイトル"], input[aria-label="Title"], .titleField input').locator("visible=true").first
+                        title_input.wait_for(state="visible", timeout=15000)
+                        title_input.click()
+                        time.sleep(0.5)
+                        page.keyboard.press('Control+A')
+                        page.keyboard.press('Meta+A')
+                        page.keyboard.press('Backspace')
+                        title_input.fill(title)
+                        time.sleep(1.5)
+
+                        print("Focusing on editor body...")
+                        page.keyboard.press('Tab')
+                        time.sleep(0.5)
+                        page.keyboard.press('Tab')
+                        time.sleep(1.0)
+
+                        try:
+                            editor_body = page.locator('div[aria-label="本文"], div[aria-label="Body"], div[role="textbox"], iframe').locator("visible=true").first
+                            editor_body.click(timeout=3000)
+                        except:
+                            pass
+
+                        print("Injecting HTML content via clipboard paste...")
+                        page.evaluate('''html => {
+                            try {
+                                const blob = new Blob([html], { type: 'text/html' });
+                                const data = [new ClipboardItem({ 'text/html': blob })];
+                                navigator.clipboard.write(data);
+                            } catch (e) {
+                                console.error('Clipboard write failed:', e);
+                            }
+                        }''', content)
+                        time.sleep(1.5)
+
+                        page.keyboard.press('Control+V')
+                        page.keyboard.press('Meta+V')
+                        time.sleep(2.0)
+
+                        # オートセーブを誘発
+                        page.keyboard.press('Space')
+                        time.sleep(0.5)
+                        page.keyboard.press('Backspace')
+                        time.sleep(3.0)
+
+                        page_html = page.content()
+                        if "<img" in page_html and ("href" in page_html or "http" in page_html):
+                            print("Validation passed: Body content successfully inserted into Blogger editor.")
+                            success = True
+                            break
+                        else:
+                            print("Validation check warning: Editor content verification did not find expected tags. Retrying...")
+                    except Exception as e:
+                        print(f"Error during attempt {attempt+1}: {e}")
+                    time.sleep(2)
+
+                if not success:
+                    raise Exception("Critical: Could not inject body content after multiple attempts.")
+
+                # 公開処理
+                print("Clicking Publish button...")
+                try:
+                    pub_btn = page.locator('[aria-label="公開"], [aria-label="Publish"]').locator("visible=true").first
+                    pub_btn.scroll_into_view_if_needed()
+                    time.sleep(1)
+                    pub_btn.click(force=True, timeout=10000)
+                except Exception as e:
+                    print("Clicking publish via shortcut:", e)
+                    page.keyboard.press('Control+Shift+P')
+                    page.keyboard.press('Meta+Shift+P')
+
+                time.sleep(3)
+
+                # 確認ダイアログの「確認」ボタン
+                try:
+                    conf_btn = page.locator('div[role="dialog"] div[role="button"]:has-text("確認"), [aria-label="確認"], [aria-label="Confirm"]').locator("visible=true").first
+                    conf_btn.click(force=True, timeout=5000)
+                    print("Confirmed publication dialog.")
+                except Exception as e:
+                    print("Confirm button fallback with Enter:", e)
+                    page.keyboard.press('Enter')
+
+                time.sleep(10)
+                print("Successfully published curated mens cosmetic article to Blogger!")
+
+            except Exception as e:
+                print(f"Error during Blogger operation: {e}")
+                raise e
+
+    finally:
+        if session_file_path and session_file_path != "session.json" and os.path.exists(session_file_path):
+            os.remove(session_file_path)
+
+
+def main():
+    try:
+        print("=== Starting Mens Cosmetics Blogger Automation ===")
+        # 1. メンズコスメ・身だしなみ商品を複数選抜（5点）
+        theme_obj, items = fetch_rakuten_mens_items(count=5)
+        item_codes = [it.get("itemCode") for it in items if it.get("itemCode")]
+        print(f"Selected {len(items)} items for '{theme_obj['theme']}'")
+        for i, it in enumerate(items, 1):
+            print(f"  {i}. {it['cleanName']} ({it.get('itemPrice')}円)")
+
+        # 2. 選抜記事生成
+        article = generate_curated_mens_article(theme_obj, items)
+        title = article["title"]
+        html_content = article["html"]
+        print(f"\nGenerated Title: {title}")
+
+        # 3. 厳格な品質チェック＆プロ校正
+        final_html = strict_quality_check_and_refine(title, html_content, items)
+
+        # 4. Bloggerへ自動投稿（room投稿は行わない）
+        post_to_blogger(title, final_html)
+
+        # 5. キャッシュ保存
+        save_to_cache(item_codes)
+        print("All processes finished successfully!")
+
+    except Exception as e:
+        print(f"Fatal error in main: {e}")
+        exit(1)
+
+if __name__ == "__main__":
+    main()

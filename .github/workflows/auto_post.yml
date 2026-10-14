@@ -1,11 +1,14 @@
-name: Auto Post to Blogger
+name: Auto Post to Mens Cosmetics Blogger
 
 on:
+  schedule:
+    # 1日に5回（JST: 08:30, 12:30, 16:30, 19:30, 22:30）
+    # UTC: 23:30, 03:30, 07:30, 10:30, 13:30
+    - cron: '30 23,3,7,10,13 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
-  models: read
 
 jobs:
   post:
@@ -26,22 +29,18 @@ jobs:
           pip install -r requirements.txt
 
       - name: Install Playwright Browsers
-        run: playwright install chromium
+        run: playwright install --with-deps chromium
 
-      - name: Run Auto Post Script
+      - name: Run Mens Blogger Post Script
         env:
           RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
           RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
           RAKUTEN_AFFILIATE_ID: ${{ secrets.RAKUTEN_AFFILIATE_ID }}
           BLOGGER_SESSION_B64: ${{ secrets.BLOGGER_SESSION_B64 }}
           BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
-          ROOM_SESSION_B64: ${{ secrets.ROOM_SESSION_B64 }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: python kaden_blogger.py
+        run: python mens_blogger.py
 
       - name: Commit and Push Cache Update
         run: |
