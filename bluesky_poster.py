@@ -121,10 +121,41 @@ def fetch_item_image_bytes(image_url):
         print(f"[WARN] Failed to fetch item image from {image_url}: {e}")
     return None
 
+BLUESKY_TEXT_HISTORY_FILE = "bluesky_text_history.txt"
+
+def load_text_history():
+    if os.path.exists(BLUESKY_TEXT_HISTORY_FILE):
+        with open(BLUESKY_TEXT_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+    return []
+
+def record_text_history(text):
+    # 改行をスペースに置換して1行で保存
+    cleaned = re.sub(r'\s+', ' ', text).strip()
+    with open(BLUESKY_TEXT_HISTORY_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{cleaned}\n")
+
+def is_similar_to_history(new_text, history_list):
+    """過去の投稿テキストと冒頭部分や主要フレーズが重複していないかを厳格判定"""
+    if not history_list:
+        return False
+    new_norm = re.sub(r'[\s、。！？!?,.]', '', new_text)
+    for past in history_list[-20:]: # 直近20件をチェック
+        past_norm = re.sub(r'[\s、。！？!?,.]', '', past)
+        # 冒頭18文字が完全一致
+        if len(new_norm) >= 18 and len(past_norm) >= 18:
+            if new_norm[:18] == past_norm[:18]:
+                return True
+        # 共通部分の長さチェック
+        if new_norm in past_norm or past_norm in new_norm:
+            return True
+    return False
+
 def generate_tigyu_post_text(theme_name, item, blogger_url):
     """
     最新Geminiモデルを活用し、「チー牛ラボ 〜劇的垢抜けアイテム研究〜」として
     AI臭さのないリアルで熱量の高い推薦ポスト文を生成。
+    過去の投稿と重複しない完全にユニークな文章を保証。
     現在の季節・時期（10月・秋など）に厳格に合わせたリアルなトーンで作成。
     """
     clean_name = item.get("cleanName") or item.get("itemName") or "厳選アイテム"
@@ -136,17 +167,34 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
     cur_month = now.month
     cur_season = "秋" if cur_month in [9, 10, 11] else ("冬" if cur_month in [12, 1, 2] else ("春" if cur_month in [3, 4, 5] else "夏"))
 
-    # 多彩な切り口（テンプレート使い回しを完全に禁止）
+    past_texts = load_text_history()
+
+    # 多彩な切り口（テンプレート使い回しを完全に禁止・12パターン以上）
     hooks_angles = [
         "「垢抜けたいなら真っ先にこれを使え！」と断言する理由",
         "「色々試したけど、結局これが一番清潔感出た…！」という本気のおすすめ",
         "見た目の印象を劇的に変えたいメンズが今すぐ手に入れるべき神ギア",
         "肌や身だしなみで損したくない男子へ。まずコレ使っとけば間違いないやつ",
-        "脱チー牛・清潔感カンストを目指すなら絶対外せない劇的垢抜けアイテム"
+        "脱チー牛・清潔感カンストを目指すなら絶対外せない劇的垢抜けアイテム",
+        "正直もっと早く買っておけばよかったと本気で後悔したレベルの逸品",
+        "女子ウケや第一印象をガラリと変えたいなら、迷わずこれに課金すべき",
+        "カサつきや芋っぽさを一発で払拭してくれる、チー牛救済の即効アイテム",
+        "「何から始めればいいか分からない」男子は、とりあえずこれ買えば勝ち確",
+        "男の身だしなみで一番費用対効果が高い、ガチ推しの垢抜けツール",
+        "清潔感がないと言われて凹んでた過去の自分に全力で渡したい神コスメ",
+        "朝の数分で劇的に垢抜ける。面倒くさがり男子にこそ使ってほしいアイテム"
     ]
-    chosen_angle = random.choice(hooks_angles)
+    random.shuffle(hooks_angles)
 
-    prompt = f"""
+    text = None
+    if gemini_key:
+        random_models = list(GEMINI_MODELS)
+        random.shuffle(random_models)
+        
+        for angle in hooks_angles[:4]:
+            if text:
+                break
+            prompt = f"""
 あなたはBlueskyアカウント「チー牛ラボ 〜劇的垢抜けアイテム研究〜」（@tigyu-cosme.bsky.social）の運営者です。
 元々垢抜けずに悩み、メンズ美容やスキンケアで劇的に人生が変わった男性が、リアルな本音で投稿します。
 
@@ -157,59 +205,59 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
 【今回の厳選アイテム】
 - テーマ: {theme_name}
 - 商品名: {clean_name} {price_info}
-- 今回の切り口: {chosen_angle}
+- 今回の切り口: {angle}
 
 【厳格な執筆ルール】
 1. AI特有の定型句（「こんにちは」「今回は〜をご紹介します」「〜はいかがでしょうか」「ぜひ試してみてね」）は【一切禁止】。
 2. テンプレート感のある機械的な文章は禁止。毎回オリジナルの熱量で、Twitter/Blueskyの生身のユーザーのように書いてください。
 3. 「垢抜けたいならこれを使え！」「これガチでおすすめだ」「清潔感爆上がりする」といった、男子に強く刺さる説得力のある本音の推薦文にしてください。
 4. この商品を使うことでどう劇的に垢抜けるのか、何が他のものと違うのかを具体的に1〜2点だけ絞って熱く語ってください。
-5. 出力は「推薦本文のみ（100〜140文字程度）」にしてください。URLやハッシュタグはシステムが後から付与するので、本文中にはURL・ハッシュタグ・挨拶を含めないでください。
+5. 出力は「推薦本文のみ（90〜130文字程度）」にしてください。URLやハッシュタグ・挨拶は含めないでください。
 """
-    system_instruction = f"あなたは「チー牛ラボ 〜劇的垢抜けアイテム研究〜」の熱狂的な男性美容研究者です。現在は{cur_month}月（{cur_season}）です。季節感を絶対に間違えず、AI臭さを徹底的に排除した、生々しく説得力のあるリアルな本音ポスト文のみを出力します。"
+            system_instruction = f"あなたは「チー牛ラボ 〜劇的垢抜けアイテム研究〜」の熱狂的な男性美容研究者です。現在は{cur_month}月（{cur_season}）です。季節感を絶対に間違えず、AI臭さを徹底的に排除した、生々しく説得力のあるリアルな本音ポスト文のみを出力します。"
 
-
-    text = None
-    if gemini_key:
-        random_models = list(GEMINI_MODELS)
-        random.shuffle(random_models)
-        for model in random_models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
-                payload = {
-                    "contents": [{"parts": [{"text": f"{system_instruction}\n\n{prompt}"}]}],
-                    "generationConfig": {"temperature": 0.85, "maxOutputTokens": 300}
-                }
-                res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and parts[0].get("text"):
-                            gen_text = parts[0]["text"].strip()
-                            gen_text = gen_text.replace("```", "").replace("\n\n", "\n").strip()
-                            # URLやハッシュタグが混入していれば除去
-                            gen_text = re.sub(r'https?://[^\s]+', '', gen_text).strip()
-                            gen_text = re.sub(r'#[^\s]+', '', gen_text).strip()
-                            if len(gen_text) >= 40:
-                                text = gen_text
-                                print(f"[BLUESKY-LLM] Generated text using {model}: {text[:50]}...")
-                                break
-            except Exception as e:
-                print(f"[BLUESKY-LLM] Gemini model {model} attempt failed: {e}")
-                continue
+            for model in random_models[:3]:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
+                    payload = {
+                        "contents": [{"parts": [{"text": f"{system_instruction}\n\n{prompt}"}]}],
+                        "generationConfig": {"temperature": 0.92, "maxOutputTokens": 300}
+                    }
+                    res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=12)
+                    if res.status_code == 200:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and parts[0].get("text"):
+                                gen_text = parts[0]["text"].strip()
+                                gen_text = gen_text.replace("```", "").replace("\n\n", "\n").strip()
+                                gen_text = re.sub(r'https?://[^\s]+', '', gen_text).strip()
+                                gen_text = re.sub(r'#[^\s]+', '', gen_text).strip()
+                                
+                                if len(gen_text) >= 40 and not is_similar_to_history(gen_text, past_texts):
+                                    text = gen_text
+                                    print(f"[BLUESKY-LLM] Generated unique text using {model}: {text[:50]}...")
+                                    break
+                                else:
+                                    print(f"[BLUESKY-LLM] Rejected duplicate/similar text. Retrying with another angle/model...")
+                except Exception as e:
+                    continue
 
     if not text:
-        # フォールバック（多様なリアル表現から選択）
+        # 重複しない多彩なフォールバック
         fallbacks = [
-            f"垢抜けたいならまずコレ使え！{theme_name}でガチ推ししたいのが「{clean_name}」。テカリや清潔感不足で損してる男子はこれ投入するだけで肌と顔まわりの印象が劇的に変わる。迷ったらまずこれから試してほしい逸品。",
-            f"清潔感を手っ取り早くカンストさせたいなら絶対これだ！「{clean_name}」は使い心地も仕上がりも別格。見た目変えたいけど何買えばいいか分からない人は、まずこれ使ってみてほしい。劇的に垢抜けます。",
-            f"【チー牛脱却の必須ギア】肌や見た目の印象で悩んでるなら、騙されたと思って「{clean_name}」使ってみてほしい。一発で肌の清潔感底上げされて自己肯定感バグる。垢抜け男子のガチ推しアイテム。"
+            f"垢抜けたいなら真っ先にこれを使え！{cur_month}月の乾燥・季節の変わり目で清潔感を落としたくないなら「{clean_name}」はガチで必需品。これだけで肌と顔まわりの印象が劇的に変わる。迷ったらまずこれから試してほしい神アイテム。",
+            f"清潔感を劇的に底上げしたい男子へ。「{clean_name}」は使い心地も仕上がりも文句なしに別格。見た目変えたいけど何から始めればいいか悩んでるなら、まずはこれ一択。垢抜けスピードが加速する。",
+            f"【チー牛脱却の必須ギア】肌や見た目の印象で損したくないなら、騙されたと思って「{clean_name}」使ってみてほしい。一発で肌の清潔感底上げされて自己肯定感バグる。垢抜けたいなら絶対に外せない逸品。",
+            f"女子ウケや第一印象を本気で変えたいならコレ。「{clean_name}」は男の清潔感を一瞬でカンストさせるレベルの仕上がり。手頃なのに効果抜群で、もっと早く買えばよかったと後悔した神ギア。"
         ]
-        text = random.choice(fallbacks)
+        # 過去に使われていないものを選択
+        unused_fallbacks = [fb for fb in fallbacks if not is_similar_to_history(fb, past_texts)]
+        text = random.choice(unused_fallbacks if unused_fallbacks else fallbacks)
 
     return text
+
 
 def build_bluesky_post_payload(post_text, blogger_url, affiliate_url, clean_item_name):
     """

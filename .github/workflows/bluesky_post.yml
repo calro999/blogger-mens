@@ -1,13 +1,10 @@
 name: Post to Bluesky (チー牛ラボ)
 
 on:
-  workflow_run:
-    workflows: ["Auto Post to Mens Cosmetics Blogger"]
-    types:
-      - completed
   workflow_dispatch:
   repository_dispatch:
     types: [bluesky_post, cron_job_bluesky]
+
 
 permissions:
   contents: write
