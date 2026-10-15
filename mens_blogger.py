@@ -239,6 +239,39 @@ def clean_rakuten_item_name(name):
     return res if res else (words[0] if words else name[:30])
 
 
+def clean_rakuten_item_caption(caption):
+    """楽天のitemCaptionから類似商品羅列、ハッシュタグ、価格表、広告ノイズを除去"""
+    if not caption:
+        return "男の身だしなみ・清潔感を整える注目アイテム。"
+    
+    # 類似商品・関連商品の案内文とそれに続く商品名・価格の羅列を全削除
+    text = re.sub(r'類似商品はこちら[^\n。]*[。\n]?', '', caption)
+    text = re.sub(r'関連商品[^\n。]*[。\n]?', '', text)
+    text = re.sub(r'おすすめ商品[^\n。]*[。\n]?', '', text)
+    
+    # ハッシュタグ（#韓国ヘア、#メンズケア など）の完全削除
+    text = re.sub(r'#[^\s　#]+', '', text)
+    
+    # 価格付きの商品羅列（〜〜円、〜〜,〜〜〜円）のパターンを削除
+    text = re.sub(r'[^\s　、。]+[0-9,]+円[、。]?', '', text)
+    
+    # 記号マーク付きの売り文句（■Point、★幅広設計 など）
+    text = re.sub(r'[■★◆●▼▲]+[^\s　]+', '', text)
+    text = re.sub(r'[■★◆●▼▲・~〜※]+', ' ', text)
+    
+    # URLやリンク風テキストの除去
+    text = re.sub(r'https?://[^\s]+', '', text)
+    
+    # 余分な空白・改行の整形
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # 最低限の意味のあるテキストが残らなかった場合のフォールバック
+    if len(text) < 15:
+        return "使い心地と効果にこだわったメンズ専用の身だしなみアイテム。"
+    return text[:200]
+
+
+
 def extract_brand_and_product(clean_name):
     """商品名からブランド名と商品名を綺麗に分離"""
     name = re.sub(r'^[＼／★\s]+|[＼／★\s]+$', '', clean_name).strip()
@@ -404,6 +437,8 @@ def fetch_rakuten_mens_items(count=5):
             continue
 
         it["cleanName"] = clean_rakuten_item_name(name)
+        it["cleanCaption"] = clean_rakuten_item_caption(it.get("itemCaption", ""))
+        it["itemCaption"] = it["cleanCaption"]
         it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
         it["imgUrl"] = extract_image_url(it)
 
@@ -435,6 +470,8 @@ def fetch_rakuten_mens_items(count=5):
                         if any(ng in exp_name for ng in ng_words) or exp_it.get("itemPrice", 0) < 300:
                             continue
                         exp_it["cleanName"] = clean_rakuten_item_name(exp_name)
+                        exp_it["cleanCaption"] = clean_rakuten_item_caption(exp_it.get("itemCaption", ""))
+                        exp_it["itemCaption"] = exp_it["cleanCaption"]
                         exp_it["affUrl"] = get_rakuten_affiliate_url(exp_it, affiliate_id)
                         exp_it["imgUrl"] = extract_image_url(exp_it)
                         is_dup, reason = is_duplicate_or_similar_item(exp_it, selected_items, posted_cache)
@@ -706,16 +743,7 @@ def generate_curated_mens_article(theme_obj, items):
                 f'</tr>'
             )
 
-        # 比較テーブルの追加
-        body_parts.append(f'<h3 style="margin-top: 45px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">📊 一目でわかる！厳選アイテム徹底比較表</h3>')
-        body_parts.append(f'<div style="overflow-x: auto; margin: 20px 0;">')
-        body_parts.append(f'<table style="width: 100%; border-collapse: collapse; min-width: 520px; font-size: 14px; text-align: left; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">')
-        body_parts.append(f'<thead style="background-color: #edf2f7;"><tr style="border-bottom: 2px solid #cbd5e0;"><th style="padding: 10px 12px;">商品・ブランド</th><th style="padding: 10px 12px;">価格目安</th><th style="padding: 10px 12px;">主な特徴</th><th style="padding: 10px 12px;">おすすめな人</th></tr></thead>')
-        body_parts.append(f'<tbody>{"".join(table_rows)}</tbody></table></div>')
-
-        # まとめ・選び分けガイドの追加
-        body_parts.append(f'<h3 style="margin-top: 40px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">総括：失敗しないための選び方ガイド</h3>')
-        body_parts.append(f'<p>今回ご紹介した{count}選は、いずれも使いやすさと清潔感の向上に定評のある実力派ばかりです。手軽さを最優先するならオールインワンやセット品、ピンポイントで印象を変えたいなら専用ツールを選ぶのがおすすめです。自分のライフスタイルに合ったアイテムを1つ取り入れて、自信の持てる身だしなみを手に入れましょう！</p>')
+        body_parts.append(build_comparison_table_and_summary(items, count))
         body_parts.append('</div>')
         
         parsed = {
@@ -726,17 +754,57 @@ def generate_curated_mens_article(theme_obj, items):
     return parsed
 
 
+def build_comparison_table_and_summary(items, count):
+    """商品比較テーブルと総括選び方ガイドを確実に生成"""
+    table_rows = []
+    catchphrases = [
+        "第一印象を劇的に底上げする実力派",
+        "男の清潔感をカンストさせる神ギア",
+        "忙しい朝でも手軽に垢抜ける即効アイテム",
+        "乾燥やテカリを寄せ付けない大人の必需品",
+        "女性ウケ・ビジネス好感度を両立する鉄板品"
+    ]
+    for idx, it in enumerate(items, 1):
+        brand = it.get("brand") or "注目ブランド"
+        product = it.get("product") or it.get("cleanName", "")
+        price = it.get("itemPrice", "")
+        catch = catchphrases[(idx - 1) % len(catchphrases)]
+        table_rows.append(
+            f'<tr style="border-bottom: 1px solid #e2e8f0;">'
+            f'<td style="padding: 10px 12px; font-weight: bold; color: #2d3748;">{brand}<br><span style="font-size: 12px; font-weight: normal; color: #718096;">{product[:16]}</span></td>'
+            f'<td style="padding: 10px 12px; color: #c53030; font-weight: bold;">{price}円</td>'
+            f'<td style="padding: 10px 12px;">{catch}</td>'
+            f'<td style="padding: 10px 12px; font-size: 13px;">清潔感を即座に上げたい方</td>'
+            f'</tr>'
+        )
+    
+    table_html = (
+        f'<h3 style="margin-top: 45px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">📊 一目でわかる！厳選アイテム徹底比較表</h3>'
+        f'<div style="overflow-x: auto; margin: 20px 0;">'
+        f'<table style="width: 100%; border-collapse: collapse; min-width: 520px; font-size: 14px; text-align: left; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">'
+        f'<thead style="background-color: #edf2f7;"><tr style="border-bottom: 2px solid #cbd5e0;"><th style="padding: 10px 12px;">商品・ブランド</th><th style="padding: 10px 12px;">価格目安</th><th style="padding: 10px 12px;">主な特徴</th><th style="padding: 10px 12px;">おすすめな人</th></tr></thead>'
+        f'<tbody>{"".join(table_rows)}</tbody></table></div>'
+    )
+
+    summary_html = (
+        f'<h3 style="margin-top: 40px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">総括：失敗しないための選び方ガイド</h3>'
+        f'<p>今回ご紹介した{count}選は、いずれも使いやすさと清潔感の向上に定評のある実力派ばかりです。手軽さを最優先するならオールインワンやセット品、ピンポイントで印象を変えたいなら専用ツールを選ぶのがおすすめです。自分のライフスタイルに合ったアイテムを1つ取り入れて、自信の持てる身だしなみを手に入れましょう！</p>'
+    )
+    return table_html + "\n" + summary_html
+
+
 def strict_quality_check_and_refine(title, html_content, items):
     """
     【記事品質チェック厳し目工程】
     1. 必須要素の確認（各商品の画像、リンクURL、タイトル、文字量）
     2. 禁止単語（Amazon, 他社リンク、未置換タグ等）の除去
     3. LLMによる誤字脱字、文脈の自然さ、AI臭さの排除校正
-    4. HTML構文・閉じタグの整合性補正
+    4. 比較テーブルとまとめの死守・自動再結合保証
+    5. HTML構文・閉じタグの整合性補正
     """
     print("Executing strict quality check & refinement...")
 
-    # チェック1: 文字量チェック（選抜記事なので最低でも1200文字以上を担保）
+    # チェック1: 文字量チェック
     text_length = len(re.sub(r'<[^>]+>', '', html_content))
     print(f"Content text length (excluding tags): {text_length} chars")
 
@@ -758,6 +826,10 @@ def strict_quality_check_and_refine(title, html_content, items):
     # チェック3: 禁止ワードのサニタイズ
     html_content = html_content.replace("Amazon", "楽天市場").replace("アマゾン", "楽天市場").replace("Yahoo!", "楽天市場").replace("ヤフー", "楽天市場")
 
+    # キャプションノイズの最終サニタイズ（類似商品はこちら...などの残滓を記事本文からも念のため抹消）
+    html_content = re.sub(r'類似商品はこちら[^\n<。]*[。<]?', '', html_content)
+    html_content = re.sub(r'#[^\s　#<]+', '', html_content)
+
     # チェック4: LLMによるプロ品質校正（AI臭さの排除と文脈の完全性）
     proofread_prompt = f"""以下のメンズコスメ選抜記事のHTMLに対して、厳格な品質校正を行ってください。
 
@@ -769,10 +841,9 @@ def strict_quality_check_and_refine(title, html_content, items):
 1. 誤字脱字、てにをは、不自然な文言を徹底的に修正してください。
 2. 『注目1』『注目2』や『◯月の厳選ポイント』などの安易なテンプレ表現が残っている場合は完全に削除し、商品ごとに異なる生々しい推薦文・洗練された見出しに整えてください。
 3. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
-4. 記事末尾の比較テーブル（table）やまとめ・選び方ガイドは絶対に削らず、デザインと整合性を保って美しく残してください。
-5. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグ、tableタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
-6. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
-7. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
+4. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
+5. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
+6. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
 """
     proofread_system = "あなたは大手男性美容WEBマガジンの最高編集責任者です。妥協のない厳格な校正を行い、高品質なHTMLのみを返します。"
     refined_html = call_llm(proofread_prompt, proofread_system, temperature=0.4, max_tokens=3800)
@@ -786,7 +857,23 @@ def strict_quality_check_and_refine(title, html_content, items):
         html_content = refined_html
         print("Refinement step completed successfully.")
 
-    # チェック5: 閉じタグ整合性の自動補正
+    # チェック5: 比較テーブルおよびまとめの死守・強制保証
+    # 校正LLMや生成でテーブルやまとめが落ちていた場合、確実に末尾に注入する
+    has_table = "<table" in html_content
+    has_summary = "総括" in html_content or "選び方ガイド" in html_content
+
+    if not has_table or not has_summary:
+        print("[QUALITY-GUARANTEE] Table or summary was missing after LLM refinement. Appending guaranteed comparison table and summary!")
+        guaranteed_appendix = build_comparison_table_and_summary(items, len(items))
+        
+        # 閉じdivの直前に挿入するか、末尾に追記
+        if "</div>" in html_content:
+            last_div_idx = html_content.rfind("</div>")
+            html_content = html_content[:last_div_idx] + "\n" + guaranteed_appendix + "\n</div>"
+        else:
+            html_content += "\n" + guaranteed_appendix
+
+    # チェック6: 閉じタグ整合性の自動補正
     open_divs = html_content.count("<div")
     close_divs = html_content.count("</div>")
     if open_divs > close_divs:
