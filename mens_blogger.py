@@ -265,10 +265,29 @@ def clean_rakuten_item_caption(caption):
     # 余分な空白・改行の整形
     text = re.sub(r'\s+', ' ', text).strip()
     
-    # 最低限の意味のあるテキストが残らなかった場合のフォールバック
-    if len(text) < 15:
-        return "使い心地と効果にこだわったメンズ専用の身だしなみアイテム。"
-    return text[:200]
+    # 句点（。）で分割し、完全な文のみを結合して途切れのない文章を生成
+    sentences = re.split(r'(?<=。)', text)
+    valid_sentences = []
+    total_len = 0
+    for s in sentences:
+        s_clean = s.strip()
+        if not s_clean:
+            continue
+        # 意味のある文（5文字以上）
+        if len(s_clean) >= 5:
+            # もし末尾が句点で終わっていなければ補完
+            if not s_clean.endswith(('。', '！', '!')):
+                s_clean += '。'
+            valid_sentences.append(s_clean)
+            total_len += len(s_clean)
+            if total_len >= 140:
+                break
+                
+    if valid_sentences:
+        return "".join(valid_sentences)
+
+    # 最低限の意味のあるテキストが残らなかった場合の自然なフォールバック
+    return "使い心地と効果にこだわったメンズ専用の身だしなみアイテムです。"
 
 
 
@@ -570,7 +589,7 @@ def parse_json_from_llm(raw_text):
     elif "```" in text:
         text = text.split("```", 1)[1].split("```")[0].strip()
     
-    # JSON先頭と末尾のカッコを抽出
+    # 1. 通常の json.loads によるパース
     first_brace = text.find('{')
     last_brace = text.rfind('}')
     if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
@@ -582,13 +601,43 @@ def parse_json_from_llm(raw_text):
         except Exception:
             # 改行コードのエスケープ不備を修復試行
             try:
-                # 簡易修復
                 fixed = re.sub(r'(?<!\\)\n', '\\n', text_candidate)
                 data = json.loads(fixed)
                 if isinstance(data, dict) and "html" in data:
                     return data
             except Exception:
                 pass
+
+    # 2. JSON構文崩れ時の正規表現によるタイトルとHTMLの救出
+    try:
+        title_match = re.search(r'"title"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', text)
+        title = title_match.group(1).encode().decode('unicode_escape') if title_match else None
+        
+        # HTMLコンテンツの抽出
+        # "html": "..." から末尾まで、あるいは <div class="mens-curation-article"> から </div> まで
+        html = None
+        html_match = re.search(r'"html"\s*:\s*"(.*)"\s*\}?$', text, re.DOTALL)
+        if html_match:
+            try:
+                html = html_match.group(1).encode().decode('unicode_escape')
+            except Exception:
+                html = html_match.group(1)
+        elif '<div class="mens-curation-article"' in text:
+            start_idx = text.find('<div class="mens-curation-article"')
+            end_idx = text.rfind('</div>')
+            if end_idx > start_idx:
+                html = text[start_idx:end_idx+6]
+                
+        if html and len(html) > 300:
+            if not title:
+                # 記事内の最初の見出しなどからタイトルを推定
+                h2_m = re.search(r'<h[1-3][^>]*>(.*?)</h[1-3]>', html)
+                title = h2_m.group(1) if h2_m else "メンズ注目の身だしなみアイテム厳選"
+            print("[JSON-RESCUE] Successfully recovered title and HTML from raw LLM output via regex parser!")
+            return {"title": title, "html": html}
+    except Exception as e:
+        print(f"[JSON-RESCUE] Fallback parsing failed: {e}")
+
     return None
 
 
@@ -715,7 +764,11 @@ def generate_curated_mens_article(theme_obj, items):
             price = it.get("itemPrice", "")
             img = it["imgUrl"]
             url = it["affUrl"]
-            caption = it.get("itemCaption", "")[:180] or "使い心地と効果にこだわったメンズ専用の身だしなみアイテム。"
+            caption = it.get("itemCaption", "")
+            if not caption:
+                caption = "使い心地と効果にこだわったメンズ専用の身だしなみアイテムです。"
+            elif not caption.endswith(('。', '！', '!')):
+                caption += '。'
             catch = fallback_catchphrases[(idx - 1) % len(fallback_catchphrases)]
             hook = fallback_hooks[(idx - 1) % len(fallback_hooks)]
             
@@ -726,7 +779,7 @@ def generate_curated_mens_article(theme_obj, items):
             
             if img:
                 body_parts.append(f'<div style="text-align:center; margin:18px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>')
-            body_parts.append(f'<p style="margin: 14px 0;">{caption}...</p>')
+            body_parts.append(f'<p style="margin: 14px 0;">{caption}</p>')
             body_parts.append(f'<ul style="background-color: #f7fafc; border: 1px solid #edf2f7; padding: 15px 15px 15px 35px; border-radius: 6px; margin: 15px 0;">')
             body_parts.append(f'<li style="margin-bottom: 6px;">男の肌に心地よく馴染むストレスフリーなテクスチャー</li>')
             body_parts.append(f'<li style="margin-bottom: 6px;">毎日のケアを手間なく続けられる実用的な設計</li>')
@@ -839,13 +892,14 @@ def strict_quality_check_and_refine(title, html_content, items):
 
 【厳格校正ルール】:
 1. 誤字脱字、てにをは、不自然な文言を徹底的に修正してください。
-2. 『注目1』『注目2』や『◯月の厳選ポイント』などの安易なテンプレ表現が残っている場合は完全に削除し、商品ごとに異なる生々しい推薦文・洗練された見出しに整えてください。
-3. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
-4. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
-5. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
-6. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
+2. 【★最重要】文章が途中で力尽きたり、末尾が『...』や『…』で途切れる現象は【完全禁止】です。すべての文章を「〜です。」「〜ます。」などの自然な日本語の句点（。）で完璧に完結させてください。
+3. 『注目1』『注目2』や『◯月の厳選ポイント』などの安易なテンプレ表現が残っている場合は完全に削除し、商品ごとに異なる生々しい推薦文・洗練された見出しに整えてください。
+4. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
+5. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
+6. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
+7. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
 """
-    proofread_system = "あなたは大手男性美容WEBマガジンの最高編集責任者です。妥協のない厳格な校正を行い、高品質なHTMLのみを返します。"
+    proofread_system = "あなたは大手男性美容WEBマガジンの最高編集責任者です。妥協のない厳格な校正を行い、途中で途切れることのない高品質なHTMLのみを返します。"
     refined_html = call_llm(proofread_prompt, proofread_system, temperature=0.4, max_tokens=3800)
 
     if refined_html and len(refined_html.strip()) > 300:
@@ -856,6 +910,16 @@ def strict_quality_check_and_refine(title, html_content, items):
             refined_html = refined_html.split("```", 1)[1].split("```")[0].strip()
         html_content = refined_html
         print("Refinement step completed successfully.")
+
+    # チェック4.5: 三点リーダー（... や …）および文末途切れの機械的撲滅
+    # 「...」や「…」が段落内や文末に残っている場合は句点に置換
+    html_content = re.sub(r'[\.]{2,}', '。', html_content)
+    html_content = re.sub(r'…+', '。', html_content)
+    # 重複した句点（。。）を1つに統合
+    html_content = re.sub(r'。+', '。', html_content)
+    # 句点＋タグの不自然な並び（例: 。</p> を担保）
+    html_content = re.sub(r'([^。！？!?\s>])</p>', r'\1。</p>', html_content)
+    html_content = re.sub(r'([^。！？!?\s>])</li>', r'\1</li>', html_content)
 
     # チェック5: 比較テーブルおよびまとめの死守・強制保証
     # 校正LLMや生成でテーブルやまとめが落ちていた場合、確実に末尾に注入する
