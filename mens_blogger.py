@@ -267,6 +267,52 @@ def extract_image_url(item):
     return url
 
 
+def is_duplicate_or_similar_item(new_item, accepted_items, posted_cache):
+    """同一または極めて類似した商品の重複選抜を防止"""
+    new_code = new_item.get("itemCode", "")
+    if new_code in posted_cache:
+        return True, "itemCode already in posted_cache"
+    
+    new_raw_name = new_item.get("itemName", "")
+    new_clean_name = new_item.get("cleanName", "")
+    
+    def normalize_name(text):
+        t = re.sub(r'[0-9]+点組|[0-9]+点セット|[0-9]+%OFF|[0-9]+％OFF|送料無料|即納|あす楽|楽天1位|新生活|クーポン', '', text)
+        return ''.join(t.split())
+
+    new_norm = normalize_name(new_clean_name or new_raw_name)
+    words_new = set([w for w in re.split(r'[\s/、,・]+', new_clean_name) if len(w) > 1 and not re.match(r'^[0-9]+[点組]*$', w)])
+
+    for ex in accepted_items:
+        ex_code = ex.get("itemCode", "")
+        if new_code and new_code == ex_code:
+            return True, "duplicate itemCode in current selection"
+
+        # ショップコードが同じで商品コードの末尾違い（バリエーション違い）を検知
+        if ":" in new_code and ":" in ex_code:
+            shop_new, id_new = new_code.split(":", 1)
+            shop_ex, id_ex = ex_code.split(":", 1)
+            if shop_new == shop_ex and (id_new.startswith(id_ex[:5]) or id_ex.startswith(id_new[:5])):
+                return True, f"same shop variant: {shop_new}"
+
+        ex_clean = ex.get("cleanName", "")
+        ex_norm = normalize_name(ex_clean or ex.get("itemName", ""))
+        
+        # 文字列類似度（Levenstein / SequenceMatcher）
+        ratio = difflib.SequenceMatcher(None, new_norm, ex_norm).ratio()
+        if ratio >= 0.55:
+            return True, f"high name similarity ({ratio:.2f}) with {ex_clean}"
+
+        # 3単語以上の特徴キーワード重複検知（例: 「眉毛セット 8点組 シェーバー」の同種詰め合わせ）
+        words_ex = set([w for w in re.split(r'[\s/、,・]+', ex_clean) if len(w) > 1 and not re.match(r'^[0-9]+[点組]*$', w)])
+        overlap = words_new & words_ex
+        if len(overlap) >= 3:
+            return True, f"multiple shared keywords ({overlap}) with {ex_clean}"
+
+    return False, ""
+
+
+
 def fetch_rakuten_mens_items(count=5):
     """メンズコスメ・身だしなみテーマから重複を避け指定個数（通常5点）選抜"""
     app_id = os.environ.get("RAKUTEN_APP_ID")
@@ -318,7 +364,6 @@ def fetch_rakuten_mens_items(count=5):
         raise RuntimeError(f"No items found for keyword: {keyword}")
 
     posted_cache = load_posted_cache()
-
     selected_items = []
     
     ng_words = ["リサイクル", "回収", "利用券", "チケット", "処分", "修理", "女性用", "レディース", "中古"]
@@ -333,28 +378,48 @@ def fetch_rakuten_mens_items(count=5):
             continue
         if price < 300: # 安価すぎるサンプル等を除外
             continue
-        if code and code not in posted_cache and not any(x.get("itemCode") == code for x in selected_items):
-            it["cleanName"] = clean_rakuten_item_name(name)
-            it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
-            it["imgUrl"] = extract_image_url(it)
+
+        it["cleanName"] = clean_rakuten_item_name(name)
+        it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
+        it["imgUrl"] = extract_image_url(it)
+
+        is_dup, reason = is_duplicate_or_similar_item(it, selected_items, posted_cache)
+        if not is_dup:
             selected_items.append(it)
             if len(selected_items) >= count:
                 break
+        else:
+            print(f"[DEDUP] Skipped duplicate/similar item: '{it['cleanName']}' ({reason})")
 
+    # もし指定件数に満たない場合、類似テーマの拡張検索を行って異なる商品群から補充
     if len(selected_items) < count:
-        for item_wrapper in items_raw:
-            it = item_wrapper.get("Item", {})
-            code = it.get("itemCode")
-            name = it.get("itemName", "")
-            if any(ng in name for ng in ng_words):
-                continue
-            if not any(x.get("itemCode") == code for x in selected_items):
-                it["cleanName"] = clean_rakuten_item_name(name)
-                it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
-                it["imgUrl"] = extract_image_url(it)
-                selected_items.append(it)
+        print(f"[DEDUP-EXPAND] Only {len(selected_items)} unique items found for '{keyword}'. Expanding search with related terms...")
+        expand_keywords = [
+            f"メンズ {keyword.split()[-1]} おすすめ",
+            f"メンズ {keyword.split()[1] if len(keyword.split()) > 1 else '身だしなみ'}"
+        ]
+        for exp_kw in expand_keywords:
             if len(selected_items) >= count:
                 break
+            params["keyword"] = exp_kw
+            try:
+                exp_resp = requests.get(url, params=params, timeout=15)
+                if exp_resp.status_code == 200:
+                    for exp_wrapper in exp_resp.json().get("Items", []):
+                        exp_it = exp_wrapper.get("Item", {})
+                        exp_name = exp_it.get("itemName", "")
+                        if any(ng in exp_name for ng in ng_words) or exp_it.get("itemPrice", 0) < 300:
+                            continue
+                        exp_it["cleanName"] = clean_rakuten_item_name(exp_name)
+                        exp_it["affUrl"] = get_rakuten_affiliate_url(exp_it, affiliate_id)
+                        exp_it["imgUrl"] = extract_image_url(exp_it)
+                        is_dup, reason = is_duplicate_or_similar_item(exp_it, selected_items, posted_cache)
+                        if not is_dup:
+                            selected_items.append(exp_it)
+                            if len(selected_items) >= count:
+                                break
+            except Exception:
+                pass
 
     if not selected_items:
         raise RuntimeError("Could not find suitable items for the theme.")
