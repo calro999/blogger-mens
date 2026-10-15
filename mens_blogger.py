@@ -767,35 +767,67 @@ def post_to_blogger(title, content):
 
                 # エディタ画面（新規投稿）を開く
                 editor_opened = False
-                for open_attempt in range(4):
+                for open_attempt in range(5):
                     print(f"[BLOGGER-OPEN] Attempt {open_attempt + 1} to open editor...")
                     
                     if "edit" in page.url:
                         editor_opened = True
                         break
 
+                    # クリック前の先頭記事リンクを記録
+                    before_first_link = None
                     try:
-                        # 画面内に表示されている「新しい投稿を作成」ボタンを取得
+                        first_el = page.locator('a[href*="/blog/post/edit/"]').first
+                        if first_el.is_visible(timeout=3000):
+                            before_first_link = first_el.get_attribute("href")
+                    except Exception:
+                        pass
+
+                    try:
+                        # 画面内に表示されている「新しい投稿を作成」ボタンを取得してクリック
                         btn = page.locator('div[role="button"][aria-label*="新しい投稿を作成"]').filter(has_text='新しい投稿').locator("visible=true").first
-                        if not btn.is_visible(timeout=3000):
-                            btn = page.locator('div[role="button"][aria-label*="新しい投稿を作成"]').locator("visible=true").first
+                        if not btn.is_visible(timeout=2000):
+                            all_btns = page.locator('div[role="button"][aria-label*="新しい投稿を作成"]').all()
+                            for b in all_btns:
+                                if b.is_visible():
+                                    btn = b
+                                    break
 
-                        print(f"[BLOGGER-OPEN] Clicking New Post button, waiting for navigation...")
-                        try:
-                            with page.expect_navigation(timeout=15000):
-                                btn.click()
-                        except Exception:
-                            # SPA遷移がexpect_navigationで捕捉されない場合のフォールバック待機
-                            time.sleep(5.0)
+                        print(f"[BLOGGER-OPEN] Clicking New Post button...")
+                        btn.click()
+                        
+                        # 1. 自動で /blog/post/edit/... へ画面遷移するか待機
+                        # 2. 遷移しない場合、一覧の先頭に新規作成されたドラフト行が出現するため、それをクリック
+                        for wait_sec in range(8):
+                            time.sleep(1.0)
+                            if "edit" in page.url:
+                                editor_opened = True
+                                print(f"[BLOGGER-OPEN] Automatically transitioned to editor: {page.url}")
+                                break
+                            
+                            # 新規出現したドラフト行を検知
+                            try:
+                                curr_el = page.locator('a[href*="/blog/post/edit/"]').first
+                                if curr_el.is_visible():
+                                    curr_link = curr_el.get_attribute("href")
+                                    if curr_link and curr_link != before_first_link:
+                                        print(f"[BLOGGER-OPEN] New draft row detected ({curr_link}). Clicking it to enter editor...")
+                                        curr_el.click()
+                                        time.sleep(3.0)
+                                        if "edit" in page.url:
+                                            editor_opened = True
+                                            print(f"[BLOGGER-OPEN] Successfully entered editor via draft row: {page.url}")
+                                            break
+                            except Exception:
+                                pass
 
-                        if "edit" in page.url:
-                            editor_opened = True
-                            print(f"[BLOGGER-OPEN] Successfully navigated to editor: {page.url}")
+                        if editor_opened:
                             break
-                    except Exception as be:
-                        print(f"[BLOGGER-OPEN-WARN] Button click failed: {be}")
 
-                    # /new への直接遷移を試行
+                    except Exception as be:
+                        print(f"[BLOGGER-OPEN-WARN] Button click/transition failed: {be}")
+
+                    # 3. /new への直接遷移を試行
                     try:
                         new_url = f"https://draft.blogger.com/blog/post/edit/{blog_id}/new"
                         page.goto(new_url, wait_until="networkidle")
