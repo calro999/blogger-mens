@@ -704,35 +704,43 @@ def post_to_blogger(title, content):
                 for open_attempt in range(4):
                     print(f"[BLOGGER-OPEN] Attempt {open_attempt + 1} to open editor...")
                     
-                    # 1. 画面内の「新しい投稿」ボタンを探してクリック
-                    try:
-                        all_btns = page.locator('div[role="button"][aria-label*="新しい投稿を作成"], span.MIJMVe:has-text("新しい投稿")').all()
-                        for b in all_btns:
-                            box = b.bounding_box()
-                            if box and box['x'] >= 0 and box['width'] > 0 and box['height'] > 0:
-                                b.click()
-                                time.sleep(4.0)
-                                break
-                    except Exception as be:
-                        print(f"[BLOGGER-OPEN-WARN] Button click failed: {be}")
-
-                    # 2. URLに edit があるか確認
                     if "edit" in page.url:
                         editor_opened = True
                         break
 
-                    # 3. /new へ直接遷移を試行
+                    try:
+                        # 画面内に表示されている「新しい投稿を作成」ボタンを取得
+                        btn = page.locator('div[role="button"][aria-label*="新しい投稿を作成"]').filter(has_text='新しい投稿').locator("visible=true").first
+                        if not btn.is_visible(timeout=3000):
+                            btn = page.locator('div[role="button"][aria-label*="新しい投稿を作成"]').locator("visible=true").first
+
+                        print(f"[BLOGGER-OPEN] Clicking New Post button, waiting for navigation...")
+                        try:
+                            with page.expect_navigation(timeout=15000):
+                                btn.click()
+                        except Exception:
+                            # SPA遷移がexpect_navigationで捕捉されない場合のフォールバック待機
+                            time.sleep(5.0)
+
+                        if "edit" in page.url:
+                            editor_opened = True
+                            print(f"[BLOGGER-OPEN] Successfully navigated to editor: {page.url}")
+                            break
+                    except Exception as be:
+                        print(f"[BLOGGER-OPEN-WARN] Button click failed: {be}")
+
+                    # /new への直接遷移を試行
                     try:
                         new_url = f"https://draft.blogger.com/blog/post/edit/{blog_id}/new"
-                        page.goto(new_url, wait_until="domcontentloaded")
-                        time.sleep(4.0)
+                        page.goto(new_url, wait_until="networkidle")
+                        time.sleep(3.0)
                         if "edit" in page.url:
                             editor_opened = True
                             break
                     except Exception:
                         pass
 
-                    time.sleep(3.0)
+                    time.sleep(2.0)
 
                 if not editor_opened:
                     raise RuntimeError("Blogger editor could not be opened (Google rate limit / RESOURCE_EXHAUSTED or button not found).")
