@@ -201,6 +201,7 @@ def clean_rakuten_item_name(name):
     cleaned = re.sub(r'\[[^\]]*\]', '', cleaned)
     cleaned = re.sub(r'（[^）]*）', '', cleaned)
     cleaned = re.sub(r'\([^\)]*\)', '', cleaned)
+    cleaned = re.sub(r'[＼／★◆■●▼▲〜～!！?？]+', ' ', cleaned)
     
     noise_patterns = [
         r'クーポン(?:で|\s*利用で|\s*配布中|\s*対象)?\s*[0-9,]+円?(?:OFF|off)?',
@@ -231,11 +232,33 @@ def clean_rakuten_item_name(name):
         if w not in seen and len(w) > 1:
             seen.add(w)
             cleaned_words.append(w)
-        if len(' '.join(cleaned_words)) >= 35:
+        if len(' '.join(cleaned_words)) >= 40:
             break
             
     res = ' '.join(cleaned_words).strip()
     return res if res else (words[0] if words else name[:30])
+
+
+def extract_brand_and_product(clean_name):
+    """商品名からブランド名と商品名を綺麗に分離"""
+    name = re.sub(r'^[＼／★\s]+|[＼／★\s]+$', '', clean_name).strip()
+    words = name.split()
+    if not words:
+        return "注目ブランド", clean_name
+    
+    first = words[0]
+    if len(words) >= 2:
+        # 2単語で1つのブランド名になるパターン（マンダム ギャツビー等）
+        if words[1] in ['ギャツビー', 'オム', 'メン', 'MEN', 'HOMME', 'ラボ', 'モイスチャー', 'ケア'] and len(first) <= 7:
+            brand = f"{first} {words[1]}"
+            product = " ".join(words[2:]) or brand
+        else:
+            brand = first
+            product = " ".join(words[1:]) or brand
+    else:
+        brand = first
+        product = name
+    return brand, product
 
 def get_rakuten_affiliate_url(item, affiliate_id):
     aff_url = item.get("affiliateUrl")
@@ -542,9 +565,15 @@ def generate_curated_mens_article(theme_obj, items):
     
     items_desc_list = []
     for idx, it in enumerate(items, 1):
+        clean_name = it.get('cleanName', '')
+        brand, product = extract_brand_and_product(clean_name)
+        it['brand'] = brand
+        it['product'] = product
         items_desc_list.append(
             f"--- 【商品 {idx}】 ---\n"
-            f"商品名: {it['cleanName']}\n"
+            f"ブランド名: {brand}\n"
+            f"商品名: {product}\n"
+            f"フル名称: {clean_name}\n"
             f"価格: {it.get('itemPrice', '')}円\n"
             f"概要: {it.get('itemCaption', '')[:200]}\n"
             f"画像URL: {it['imgUrl']}\n"
@@ -553,14 +582,14 @@ def generate_curated_mens_article(theme_obj, items):
     items_context = "\n".join(items_desc_list)
 
     system_message = (
-        "あなたは20代〜40代男性向けの身だしなみ・メンズスキンケア・メンズコスメ専門のエディターです。"
-        "『清潔感』『好印象』『手軽さ』を重視する男性読者の悩みに寄り添い、説得力と信頼性の高い比較・おすすめ記事を執筆します。"
-        "AI臭いテンプレート感（『いかがでしたでしょうか』『〜ですね！』の連発など）は一切排除し、自然で洗練された男性美容メディアの記事トーンで作成してください。"
+        "あなたは20代〜40代男性向けの身だしなみ・メンズスキンケア・メンズコスメ専門の敏腕エディターです。"
+        "『清潔感』『好印象』『手軽さ』を重視する男性読者の悩みに寄り添い、雑誌やWebメディアのような洗練された比較・おすすめ記事を執筆します。"
+        "『注目1』『注目2』といった単調な機械的見出しや、AI臭いテンプレート感（『いかがでしたでしょうか』『〜ですね！』の連発など）は一切排除してください。"
         "出力は必ず指定のJSONフォーマットのみとしてください。"
     )
 
     prompt = f"""以下は楽天市場から厳選したメンズコスメ・身だしなみアイテム{count}点のデータです。
-今月（{current_month}月）の男性読者に向けて、選抜特集記事を作成してください。
+今月（{current_month}月）の男性読者に向けて、雑誌の特集ページのような魅力的な選抜比較記事を作成してください。
 
 【特集テーマ】: {theme_obj['theme']}
 【掲載アイテム一覧】:
@@ -573,10 +602,15 @@ def generate_curated_mens_article(theme_obj, items):
 2. 本文HTML（html）:
    - 全体を `<div class="mens-curation-article" style="line-height: 1.8; color: #222; font-family: sans-serif;">` で囲む。
    - 導入部（リード文）: なぜ今このケアやアイテム選びが大切なのか、男性特有の肌の悩み（テカリ・乾燥・毛穴・清潔感など）に触れつつ読者を引き込む（200〜300文字程度）。
-   - 各商品紹介（1〜{count}）:
-     - `<h3>` タグで【第◯位】や【◯選目】、キャッチコピー付きのアイテム名を見出しにする。
+   - 各商品紹介（1〜{count}）の見出しと構成ルール【★超重要】:
+     - 見出しに『注目1』『注目2』という単語を使うのは【完全禁止】です。
+     - `<h3>` タグの見出しは、【刺さるキャッチコピー】＋【ブランド名】または【ブランド名＋商品名】の形式にしてください。
+       例: `<h3 style="border-left: 4px solid #1a365d; padding-left: 12px; margin-top: 35px; font-size: 19px; color: #1a202c;">目元の老け見えを一掃！男の印象を変える「OPENEYES」</h3>`
+       例: `<h3 style="border-left: 4px solid #1a365d; padding-left: 12px; margin-top: 35px; font-size: 19px; color: #1a202c;">朝30秒で清潔感をカンスト！「ZIGEN」オールインワンフェイスジェル</h3>`
+     - 見出し直下の本文冒頭で、**太字のキャッチコピーや商品の位置づけ（一言要約）**を配置:
+       例: `<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin-bottom: 8px;">💡 【{current_month}月の推しポイント】ベタつきゼロで夕方までテカリ知らず！多忙な男の救世主ギア</p>`
+       例: `<p style="margin: 4px 0 12px 0; color: #4a5568;"><b>商品名:</b> ブランド名 フル商品名（価格目安: ◯◯◯◯円）</p>`
      - 画像を表示: `<div style="text-align: center; margin: 15px 0;"><img src="画像URL" alt="商品名" style="max-width: 320px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);"></div>`
-     - 価格表示やスペック、どんな男性におすすめか（例：オイリー肌、朝忙しい人、初心者向けなど）を明記。
      - 商品の具体的な特徴・おすすめ理由を2〜3つのリスト形式（`<ul><li>`）で簡潔かつ魅力的に整理。
      - 楽天市場の購入リンクボタン（赤基調・角丸で洗練されたデザイン）を各商品の直下に配置:
        `<div style="text-align: center; margin: 15px 0;"><a href="アフィリエイトURL" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 24px; background-color: #bf0000; color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none;">🛒 楽天市場で詳細・口コミを見る</a></div>`
@@ -608,23 +642,37 @@ def generate_curated_mens_article(theme_obj, items):
         chosen_prefix = random.choice(random_prefixes)
         default_title = f"{chosen_prefix}{theme_obj['theme'].replace('選抜', '')}{count}選"
         
+        fallback_catchphrases = [
+            "第一印象を劇的に底上げする実力派",
+            "男の清潔感をカンストさせる神ギア",
+            "忙しい朝でも手軽に垢抜ける即効アイテム",
+            "乾燥やテカリを寄せ付けない大人の必需品",
+            "女性ウケ・ビジネス好感度を両立する鉄板品"
+        ]
+        
         body_parts = []
         body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.8; color: #222; font-family: sans-serif;">')
-        body_parts.append(f'<p>清潔感のある肌や整えられた身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。今回は{current_month}月にチェックしておきたい注目のメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
+        body_parts.append(f'<p>清潔感のある肌や整えられた身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。今回は{current_month}月にチェックしておきたいメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
         
         for idx, it in enumerate(items, 1):
             name = it["cleanName"]
+            brand, product = extract_brand_and_product(name)
             price = it.get("itemPrice", "")
             img = it["imgUrl"]
             url = it["affUrl"]
-            body_parts.append(f'<h3 style="border-left: 4px solid #1a365d; padding-left: 10px; margin-top: 30px;">【注目{idx}】{name}</h3>')
+            catch = fallback_catchphrases[(idx - 1) % len(fallback_catchphrases)]
+            
+            # 「注目◯」を完全排除し、キャッチコピー＋ブランド名/商品名の見出しにする
+            body_parts.append(f'<h3 style="border-left: 4px solid #1a365d; padding-left: 12px; margin-top: 35px; font-size: 19px; color: #1a202c;">{catch}！「{brand}」{product[:20]}</h3>')
+            body_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 4px 0;">💡 【{current_month}月の厳選ポイント】毎日のケアを格上げし、清潔感を自然に引き出す注目アイテム</p>')
+            body_parts.append(f'<p style="margin: 0 0 12px 0; color: #4a5568; font-size: 14px;"><b>商品名:</b> {name}（価格目安: {price}円）</p>')
+            
             if img:
-                body_parts.append(f'<div style="text-align:center; margin:15px 0;"><img src="{img}" alt="{name}" style="max-width:300px; border-radius:8px;"></div>')
-            body_parts.append(f'<p><b>価格目安:</b> {price}円</p>')
+                body_parts.append(f'<div style="text-align:center; margin:15px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);"></div>')
             body_parts.append(f'<p>{it.get("itemCaption", "")[:180]}...</p>')
             body_parts.append(f'<div style="text-align:center; margin:15px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 24px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none;">🛒 楽天市場で詳細・在庫を見る</a></div>')
             
-        body_parts.append(f'<h4 style="margin-top: 30px;">まとめ</h4><p>自分の悩みやライフスタイルに合ったアイテムを取り入れて、毎日の身だしなみと清潔感をアップデートしていきましょう！</p>')
+        body_parts.append(f'<h4 style="margin-top: 35px; font-size: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">まとめ</h4><p>自分の悩みやライフスタイルに合ったアイテムを取り入れて、毎日の身だしなみと清潔感をアップデートしていきましょう！</p>')
         body_parts.append('</div>')
         
         parsed = {
@@ -676,10 +724,11 @@ def strict_quality_check_and_refine(title, html_content, items):
 
 【厳格校正ルール】:
 1. 誤字脱字、てにをは、不自然な文言を徹底的に修正してください。
-2. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
-3. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
-4. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
-5. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
+2. 『注目1』『注目2』などの単調な表現が残っている場合は完全に削除し、【キャッチコピー＋ブランド名/商品名】の洗練された見出しに修正してください。
+3. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
+4. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
+5. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
+6. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
 """
     proofread_system = "あなたは大手男性美容WEBマガジンの最高編集責任者です。妥協のない厳格な校正を行い、高品質なHTMLのみを返します。"
     refined_html = call_llm(proofread_prompt, proofread_system, temperature=0.4, max_tokens=3800)
