@@ -600,25 +600,34 @@ def generate_curated_mens_article(theme_obj, items):
    - 『{current_month}月最新』または『{current_month}月厳選』と、具体的なアイテム数（{count}選など）を含める。
    - 読者が思わずクリックしたくなる実用的かつ魅力的なタイトル（最大38文字程度）。
 2. 本文HTML（html）:
-   - 全体を `<div class="mens-curation-article" style="line-height: 1.8; color: #222; font-family: sans-serif;">` で囲む。
-   - 導入部（リード文）: なぜ今このケアやアイテム選びが大切なのか、男性特有の肌の悩み（テカリ・乾燥・毛穴・清潔感など）に触れつつ読者を引き込む（200〜300文字程度）。
-   - 各商品紹介（1〜{count}）の見出しと構成ルール【★超重要】:
-     - 見出しに『注目1』『注目2』という単語を使うのは【完全禁止】です。
-     - `<h3>` タグの見出しは、【刺さるキャッチコピー】＋【ブランド名】または【ブランド名＋商品名】の形式にしてください。
-       例: `<h3 style="border-left: 4px solid #1a365d; padding-left: 12px; margin-top: 35px; font-size: 19px; color: #1a202c;">目元の老け見えを一掃！男の印象を変える「OPENEYES」</h3>`
-       例: `<h3 style="border-left: 4px solid #1a365d; padding-left: 12px; margin-top: 35px; font-size: 19px; color: #1a202c;">朝30秒で清潔感をカンスト！「ZIGEN」オールインワンフェイスジェル</h3>`
-     - 見出し直下の本文冒頭で、**太字のキャッチコピーや商品の位置づけ（一言要約）**を配置:
-       例: `<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin-bottom: 8px;">💡 【{current_month}月の推しポイント】ベタつきゼロで夕方までテカリ知らず！多忙な男の救世主ギア</p>`
-       例: `<p style="margin: 4px 0 12px 0; color: #4a5568;"><b>商品名:</b> ブランド名 フル商品名（価格目安: ◯◯◯◯円）</p>`
-     - 画像を表示: `<div style="text-align: center; margin: 15px 0;"><img src="画像URL" alt="商品名" style="max-width: 320px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);"></div>`
-     - 商品の具体的な特徴・おすすめ理由を2〜3つのリスト形式（`<ul><li>`）で簡潔かつ魅力的に整理。
-     - 楽天市場の購入リンクボタン（赤基調・角丸で洗練されたデザイン）を各商品の直下に配置:
-       `<div style="text-align: center; margin: 15px 0;"><a href="アフィリエイトURL" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 24px; background-color: #bf0000; color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none;">🛒 楽天市場で詳細・口コミを見る</a></div>`
-   - まとめセクション: 今回紹介した{count}選の選び方のワンポイントアドバイスと背中を押すメッセージ。
+   - 全体を `<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">` で囲む。
+   - 導入部（リード文）:
+     - なぜ今このケアやアイテム選びが男の印象を変えるのか、男性特有のリアルな悩み（清潔感、テカリ、乾燥、毛穴、ヒゲ剃りダメージ等）を交えて300〜400文字程度でしっかり惹きつける。
+   - 各商品紹介（1〜{count}）の構成【★超重要】:
+     - 見出しに『注目1』『注目2』や『第◯位』といった単調な言葉は【完全禁止】。
+     - `<h3>` タグは、【刺さるキャッチコピー】＋「【ブランド名】商品名」の形式に。
+       例: `<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">目元の老け見え・クマを一網打尽！「OPENEYES」メンズアイクリーム</h3>`
+     - 見出し直下には、**固定テンプレート文（『◯月の厳選ポイント』など）は使わず**、その商品独自の魅力・選定理由を直球で伝える生々しい推薦フック文（太字）を添える。
+       例: `<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 伸びが良いジェルが角層まで即浸透。夕方のどんより顔もこれ1本でシャキッと引き締まる！</p>`
+       例: `<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>商品スペック:</b> ブランド名 フル商品名（参考価格: ◯◯◯◯円）</p>`
+     - 画像を表示: `<div style="text-align: center; margin: 18px 0;"><img src="画像URL" alt="商品名" style="max-width: 320px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>`
+     - 詳細レビュー本文:
+       - 使用感や仕上がり、どんな肌質・悩みの男性に最適かを丁寧に解説（150〜200文字程度）。
+       - 商品の具体的な特徴やおすすめ理由を3つの箇条書きリスト（`<ul><li style="margin-bottom: 6px;">`）で整理。
+     - 楽天市場の購入リンクボタン（洗練されたデザイン）を配置:
+       `<div style="text-align: center; margin: 20px 0;"><a href="アフィリエイトURL" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>`
+   - 一目でわかる！厳選アイテム徹底比較表（テーブル）:
+     - 各商品の紹介が終わった直後に、読者が一目で違いを比較できるよう、レスポンシブなHTML比較テーブル（`<table>`）を必ず挿入する。
+     - テーブルの列構成: 【商品名 / ブランド】【価格目安】【主な強み・特徴】【こんな男性におすすめ】
+     - テーブルデザイン:
+       `<div style="overflow-x: auto; margin: 35px 0;"><table style="width: 100%; border-collapse: collapse; min-width: 500px; font-size: 14px; text-align: left;"><thead style="background-color: #edf2f7;"><tr style="border-bottom: 2px solid #cbd5e0;"><th style="padding: 10px 12px;">商品・ブランド</th><th style="padding: 10px 12px;">価格目安</th><th style="padding: 10px 12px;">主な特徴</th><th style="padding: 10px 12px;">おすすめな人</th></tr></thead><tbody>...各商品行...</tbody></table></div>`
+   - まとめセクション:
+     - `<h3>総括：失敗しないための選び方ガイド</h3>`
+     - 今回の{count}選の中から「迷ったらコレ！」というタイプ別（コスパ重視、時短重視、徹底ケア重視など）の明確な選び分けガイドを記述し、背中を押すメッセージで締めくくる（250文字程度）。
 3. 【厳格な品質ルール】:
    - Amazon、Yahoo!ショッピング、他ECサイトの言及は厳禁。
    - 途中で文章が途切れず、すべてのHTMLタグが正常に閉じられていること。
-   - 宣伝臭さやテンプレートの使い回し感を無くし、読み物として価値のある独自性の高いレビュー・比較記事にすること。
+   - 記事全体の情報量を充実させ、読者がこれ1本で迷わず選べるボリューム（本文合計1800文字以上目安）にすること。
 
 【出力形式】
 {{
@@ -627,7 +636,7 @@ def generate_curated_mens_article(theme_obj, items):
 }}
 """
 
-    raw_response = call_llm(prompt, system_message, temperature=0.75, max_tokens=3500)
+    raw_response = call_llm(prompt, system_message, temperature=0.75, max_tokens=3600)
     parsed = parse_json_from_llm(raw_response)
 
     if not parsed:
@@ -650,29 +659,63 @@ def generate_curated_mens_article(theme_obj, items):
             "女性ウケ・ビジネス好感度を両立する鉄板品"
         ]
         
-        body_parts = []
-        body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.8; color: #222; font-family: sans-serif;">')
-        body_parts.append(f'<p>清潔感のある肌や整えられた身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。今回は{current_month}月にチェックしておきたいメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
+        fallback_hooks = [
+            "⚡ 面倒な手間をゼロにしつつ、清潔感と肌のコンディションを一撃で底上げする万能ギア。",
+            "⚡ ベタつきのない快適な使い心地で、夕方まで清潔な印象が長続きする頼れる逸品。",
+            "⚡ 初心者でも失敗なし。毎日の身だしなみに取り入れるだけで垢抜けスピードが加速する。",
+            "⚡ 厳選された成分設計で、気になる大人の肌悩みをスマートにケアする実力派。",
+            "⚡ コスパと実用性を高次元で両立。周りと差をつけたいなら真っ先に押さえておきたい。"
+        ]
         
+        body_parts = []
+        body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">')
+        body_parts.append(f'<p>清潔感のある肌や整えられた身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。特に季節の変わり目は、皮脂バランスの乱れや乾燥など男性特有の肌トラブルが起きやすいタイミング。今回は今月チェックしておきたい注目のメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
+        
+        table_rows = []
         for idx, it in enumerate(items, 1):
             name = it["cleanName"]
             brand, product = extract_brand_and_product(name)
             price = it.get("itemPrice", "")
             img = it["imgUrl"]
             url = it["affUrl"]
+            caption = it.get("itemCaption", "")[:180] or "使い心地と効果にこだわったメンズ専用の身だしなみアイテム。"
             catch = fallback_catchphrases[(idx - 1) % len(fallback_catchphrases)]
+            hook = fallback_hooks[(idx - 1) % len(fallback_hooks)]
             
-            # 「注目◯」を完全排除し、キャッチコピー＋ブランド名/商品名の見出しにする
-            body_parts.append(f'<h3 style="border-left: 4px solid #1a365d; padding-left: 12px; margin-top: 35px; font-size: 19px; color: #1a202c;">{catch}！「{brand}」{product[:20]}</h3>')
-            body_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 4px 0;">💡 【{current_month}月の厳選ポイント】毎日のケアを格上げし、清潔感を自然に引き出す注目アイテム</p>')
-            body_parts.append(f'<p style="margin: 0 0 12px 0; color: #4a5568; font-size: 14px;"><b>商品名:</b> {name}（価格目安: {price}円）</p>')
+            # 見出しから「注目◯」や「◯月の厳選ポイント」等のテンプレを排除
+            body_parts.append(f'<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">{catch}！「{brand}」{product[:22]}</h3>')
+            body_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">{hook}</p>')
+            body_parts.append(f'<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>商品スペック:</b> {name}（価格目安: {price}円）</p>')
             
             if img:
-                body_parts.append(f'<div style="text-align:center; margin:15px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);"></div>')
-            body_parts.append(f'<p>{it.get("itemCaption", "")[:180]}...</p>')
-            body_parts.append(f'<div style="text-align:center; margin:15px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 24px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none;">🛒 楽天市場で詳細・在庫を見る</a></div>')
+                body_parts.append(f'<div style="text-align:center; margin:18px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>')
+            body_parts.append(f'<p style="margin: 14px 0;">{caption}...</p>')
+            body_parts.append(f'<ul style="background-color: #f7fafc; border: 1px solid #edf2f7; padding: 15px 15px 15px 35px; border-radius: 6px; margin: 15px 0;">')
+            body_parts.append(f'<li style="margin-bottom: 6px;">男の肌に心地よく馴染むストレスフリーなテクスチャー</li>')
+            body_parts.append(f'<li style="margin-bottom: 6px;">毎日のケアを手間なく続けられる実用的な設計</li>')
+            body_parts.append(f'<li>清潔感のある自然な仕上がりで第一印象アップ</li>')
+            body_parts.append(f'</ul>')
+            body_parts.append(f'<div style="text-align:center; margin:20px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>')
             
-        body_parts.append(f'<h4 style="margin-top: 35px; font-size: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">まとめ</h4><p>自分の悩みやライフスタイルに合ったアイテムを取り入れて、毎日の身だしなみと清潔感をアップデートしていきましょう！</p>')
+            table_rows.append(
+                f'<tr style="border-bottom: 1px solid #e2e8f0;">'
+                f'<td style="padding: 10px 12px; font-weight: bold; color: #2d3748;">{brand}<br><span style="font-size: 12px; font-weight: normal; color: #718096;">{product[:16]}</span></td>'
+                f'<td style="padding: 10px 12px; color: #c53030; font-weight: bold;">{price}円</td>'
+                f'<td style="padding: 10px 12px;">{catch}</td>'
+                f'<td style="padding: 10px 12px; font-size: 13px;">清潔感を即座に上げたい方</td>'
+                f'</tr>'
+            )
+
+        # 比較テーブルの追加
+        body_parts.append(f'<h3 style="margin-top: 45px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">📊 一目でわかる！厳選アイテム徹底比較表</h3>')
+        body_parts.append(f'<div style="overflow-x: auto; margin: 20px 0;">')
+        body_parts.append(f'<table style="width: 100%; border-collapse: collapse; min-width: 520px; font-size: 14px; text-align: left; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">')
+        body_parts.append(f'<thead style="background-color: #edf2f7;"><tr style="border-bottom: 2px solid #cbd5e0;"><th style="padding: 10px 12px;">商品・ブランド</th><th style="padding: 10px 12px;">価格目安</th><th style="padding: 10px 12px;">主な特徴</th><th style="padding: 10px 12px;">おすすめな人</th></tr></thead>')
+        body_parts.append(f'<tbody>{"".join(table_rows)}</tbody></table></div>')
+
+        # まとめ・選び分けガイドの追加
+        body_parts.append(f'<h3 style="margin-top: 40px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">総括：失敗しないための選び方ガイド</h3>')
+        body_parts.append(f'<p>今回ご紹介した{count}選は、いずれも使いやすさと清潔感の向上に定評のある実力派ばかりです。手軽さを最優先するならオールインワンやセット品、ピンポイントで印象を変えたいなら専用ツールを選ぶのがおすすめです。自分のライフスタイルに合ったアイテムを1つ取り入れて、自信の持てる身だしなみを手に入れましょう！</p>')
         body_parts.append('</div>')
         
         parsed = {
@@ -724,11 +767,12 @@ def strict_quality_check_and_refine(title, html_content, items):
 
 【厳格校正ルール】:
 1. 誤字脱字、てにをは、不自然な文言を徹底的に修正してください。
-2. 『注目1』『注目2』などの単調な表現が残っている場合は完全に削除し、【キャッチコピー＋ブランド名/商品名】の洗練された見出しに修正してください。
+2. 『注目1』『注目2』や『◯月の厳選ポイント』などの安易なテンプレ表現が残っている場合は完全に削除し、商品ごとに異なる生々しい推薦文・洗練された見出しに整えてください。
 3. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
-4. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
-5. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
-6. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
+4. 記事末尾の比較テーブル（table）やまとめ・選び方ガイドは絶対に削らず、デザインと整合性を保って美しく残してください。
+5. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグ、tableタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
+6. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
+7. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
 """
     proofread_system = "あなたは大手男性美容WEBマガジンの最高編集責任者です。妥協のない厳格な校正を行い、高品質なHTMLのみを返します。"
     refined_html = call_llm(proofread_prompt, proofread_system, temperature=0.4, max_tokens=3800)
