@@ -1011,34 +1011,66 @@ def post_to_blogger(title, content):
 
                 # エディタ画面（新規投稿）を開く
                 editor_opened = False
-                for open_attempt in range(5):
-                    print(f"[BLOGGER-OPEN] Attempt {open_attempt + 1} to open editor...")
+                for open_attempt in range(8):
+                    print(f"[BLOGGER-OPEN] Attempt {open_attempt + 1} / 8 to open editor...")
                     
                     if "edit" in page.url:
                         editor_opened = True
                         break
 
+                    # 失敗が続く場合は一度リロードまたは再アクセスしてDOM状態をリセット
+                    if open_attempt > 0 and open_attempt % 2 == 0:
+                        try:
+                            print("[BLOGGER-OPEN] Refreshing posts page to reset state...")
+                            page.goto(posts_url, wait_until="domcontentloaded", timeout=30000)
+                            time.sleep(3.0)
+                        except Exception as re:
+                            print(f"[BLOGGER-OPEN-WARN] Refresh failed: {re}")
+
+                    # ポリシー通知やポップアップを閉じる
+                    try:
+                        close_btn = page.locator('div:has-text("Blogger のコンテンツ ポリシー") [role="button"], div[aria-label*="閉じる"], button[aria-label*="閉じる"]').first
+                        if close_btn.is_visible(timeout=1500):
+                            close_btn.click()
+                            time.sleep(0.5)
+                    except Exception:
+                        pass
+
                     # クリック前の先頭記事リンクを記録
                     before_first_link = None
                     try:
                         first_el = page.locator('a[href*="/blog/post/edit/"]').first
-                        if first_el.is_visible(timeout=3000):
+                        if first_el.is_visible(timeout=2000):
                             before_first_link = first_el.get_attribute("href")
                     except Exception:
                         pass
 
                     try:
                         # 画面内に表示されている「新しい投稿を作成」ボタンを取得してクリック
-                        btn = page.locator('div[role="button"][aria-label*="新しい投稿を作成"]').filter(has_text='新しい投稿').locator("visible=true").first
-                        if not btn.is_visible(timeout=2000):
+                        btn = None
+                        selectors = [
+                            'div[role="button"][aria-label*="新しい投稿を作成"]',
+                            'div[role="button"]:has-text("新しい投稿")',
+                            'button:has-text("新しい投稿")',
+                            'a[aria-label*="新しい投稿"]',
+                            '[data-action-id="create_post"]'
+                        ]
+                        for sel in selectors:
+                            target = page.locator(sel).locator("visible=true").first
+                            if target.is_visible(timeout=1500):
+                                btn = target
+                                break
+
+                        if not btn:
                             all_btns = page.locator('div[role="button"][aria-label*="新しい投稿を作成"]').all()
                             for b in all_btns:
                                 if b.is_visible():
                                     btn = b
                                     break
 
-                        print(f"[BLOGGER-OPEN] Clicking New Post button...")
-                        btn.click()
+                        if btn:
+                            print(f"[BLOGGER-OPEN] Clicking New Post button...")
+                            btn.click(timeout=5000)
                         
                         # 1. 自動で /blog/post/edit/... へ画面遷移するか待機
                         # 2. 遷移しない場合、一覧の先頭に新規作成されたドラフト行が出現するため、それをクリック
@@ -1074,15 +1106,17 @@ def post_to_blogger(title, content):
                     # 3. /new への直接遷移を試行
                     try:
                         new_url = f"https://draft.blogger.com/blog/post/edit/{blog_id}/new"
-                        page.goto(new_url, wait_until="networkidle")
-                        time.sleep(3.0)
+                        print(f"[BLOGGER-OPEN] Trying direct navigation to new post URL: {new_url}")
+                        page.goto(new_url, wait_until="domcontentloaded", timeout=30000)
+                        time.sleep(4.0)
                         if "edit" in page.url:
                             editor_opened = True
+                            print(f"[BLOGGER-OPEN] Direct navigation succeeded: {page.url}")
                             break
-                    except Exception:
-                        pass
+                    except Exception as de:
+                        print(f"[BLOGGER-OPEN-WARN] Direct navigation failed: {de}")
 
-                    time.sleep(2.0)
+                    time.sleep(2.0 + open_attempt)
 
                 if not editor_opened:
                     raise RuntimeError("Blogger editor could not be opened (Google rate limit / RESOURCE_EXHAUSTED or button not found).")
@@ -1228,7 +1262,21 @@ def main():
         final_html = strict_quality_check_and_refine(title, html_content, items)
 
         # 4. Bloggerへ自動投稿（room投稿は行わない）
-        blogger_post_url = post_to_blogger(title, final_html)
+        blogger_post_url = None
+        for b_attempt in range(3):
+            try:
+                print(f"\n[MAIN] Executing Blogger Post Attempt {b_attempt + 1} / 3...")
+                blogger_post_url = post_to_blogger(title, final_html)
+                if blogger_post_url:
+                    break
+            except Exception as pe:
+                print(f"[MAIN-WARN] Blogger post attempt {b_attempt + 1} failed: {pe}")
+                if b_attempt < 2:
+                    print("[MAIN-WARN] Waiting 20 seconds before retry...")
+                    time.sleep(20.0)
+                else:
+                    raise pe
+
         print(f"Blogger Publication Complete: {blogger_post_url}")
 
         # 5. キャッシュ保存

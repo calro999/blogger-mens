@@ -7,7 +7,6 @@ on:
     - cron: '30 23,3,7,10,13 * * *'
   workflow_dispatch:
   repository_dispatch:
-    types: [cron_job, auto_post, blogger_post, run]
 
 permissions:
   contents: write
@@ -33,7 +32,7 @@ jobs:
       - name: Install Playwright Browsers
         run: playwright install --with-deps chromium
 
-      - name: Run Mens Blogger and Bluesky Post Script
+      - name: Run Mens Blogger and Bluesky Post Script with Retry
         env:
           RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
           RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
@@ -44,8 +43,23 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE || 'tigyu-cosme.bsky.social' }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD || 'ebeq-ainb-o63m-tfwc' }}
-
-        run: python mens_blogger.py
+        run: |
+          MAX_RETRIES=3
+          COUNT=0
+          until [ "$COUNT" -ge "$MAX_RETRIES" ]
+          do
+            echo "=== Execution Attempt $((COUNT + 1)) / $MAX_RETRIES ==="
+            python mens_blogger.py && break
+            COUNT=$((COUNT + 1))
+            if [ "$COUNT" -lt "$MAX_RETRIES" ]; then
+              echo "[WARN] Run failed. Waiting 30 seconds before retry..."
+              sleep 30
+            fi
+          done
+          if [ "$COUNT" -ge "$MAX_RETRIES" ]; then
+            echo "[ERROR] All $MAX_RETRIES attempts failed."
+            exit 1
+          fi
 
       - name: Commit and Push Cache & History Update
         run: |
