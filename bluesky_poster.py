@@ -10,6 +10,24 @@ import requests
 from atproto import Client, client_utils
 from PIL import Image
 
+# .env を安全に自動ロード
+def load_env_file(filepath=".env"):
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'").strip('"')
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
+
+load_env_file()
+
 BLUESKY_HISTORY_FILE = "bluesky_post_history.txt"
 BLUESKY_ENGAGEMENT_FILE = "bluesky_engagement_history.txt"
 LATEST_POST_FILE = "latest_blogger_post.json"

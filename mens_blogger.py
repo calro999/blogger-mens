@@ -10,7 +10,110 @@ import difflib
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
+# .env を安全に自動ロード（外部ライブラリ依存なし）
+def load_env_file(filepath=".env"):
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'").strip('"')
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception as e:
+            print(f"[WARN] Failed to load .env file: {e}")
+
+load_env_file()
+
 CACHE_FILE = "posted_cache.txt"
+POSTED_TITLES_FILE = "posted_titles.txt"
+RECENT_THEMES_FILE = "recent_themes.txt"
+
+def load_posted_titles():
+    """過去に投稿された記事タイトルの一覧を取得"""
+    if os.path.exists(POSTED_TITLES_FILE):
+        with open(POSTED_TITLES_FILE, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+    return []
+
+def save_posted_title(title):
+    """新規投稿タイトルを永続化保存"""
+    if not title:
+        return
+    title_clean = title.strip()
+    with open(POSTED_TITLES_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{title_clean}\n")
+
+def is_title_duplicate_or_similar(new_title, threshold=0.70):
+    """
+    過去のタイトルと完全一致、または類似度が閾値（70%）以上なら重複と判定
+    記号や月表記のノイズを除去して意味的な重複を徹底排除
+    """
+    if not new_title:
+        return True, "空のタイトル", 1.0
+    existing_titles = load_posted_titles()
+    clean_new = re.sub(r'[\s\d月【】選！!｜|：:・\-\[\]（）()]+', '', new_title)
+    if not clean_new:
+        return True, "無効なタイトル", 1.0
+
+    for past in existing_titles:
+        if new_title.strip() == past.strip():
+            return True, past, 1.0
+        clean_past = re.sub(r'[\s\d月【】選！!｜|：:・\-\[\]（）()]+', '', past)
+        if not clean_past:
+            continue
+        ratio = difflib.SequenceMatcher(None, clean_new, clean_past).ratio()
+        if ratio >= threshold:
+            return True, past, ratio
+    return False, None, 0.0
+
+def load_recent_themes(limit=10):
+    """直近投稿されたテーマ一覧を取得"""
+    if os.path.exists(RECENT_THEMES_FILE):
+        with open(RECENT_THEMES_FILE, "r", encoding="utf-8") as f:
+            lines = [l.strip() for l in f if l.strip()]
+            return lines[-limit:]
+    return []
+
+def save_recent_theme(theme_name):
+    """テーマ名を履歴に保存（直近の連続重複を防ぐ）"""
+    if not theme_name:
+        return
+    with open(RECENT_THEMES_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{theme_name.strip()}\n")
+
+def is_mojibake(text):
+    """
+    文字化け特有のバイト崩れ文字（æ, œ, å, é, ¸, ï, ½, etc.）が異常に含有されているかを検知
+    """
+    if not text or not isinstance(text, str):
+        return True
+    mojibake_chars = ['æ', 'œ', 'å', 'é', '¸', 'ï', '½', 'ç', '®', ' ', 'è', '¦', '«', '·', '£', '³']
+    count = sum(text.count(c) for c in mojibake_chars)
+    return count >= 3
+
+def safe_unescape_json_string(s):
+    """
+    JSON文字列や正規表現で抽出したテキストを安全にデコード
+    決して s.encode().decode('unicode_escape') のような破壊的変換は行わない
+    """
+    if not s or not isinstance(s, str):
+        return ""
+    
+    # \uXXXX 形式のエスケープのみピンポイントで安全に置換
+    def unescape_u(match):
+        try:
+            return chr(int(match.group(1), 16))
+        except Exception:
+            return match.group(0)
+            
+    res = re.sub(r'\\u([0-9a-fA-F]{4})', unescape_u, s)
+    res = res.replace('\\"', '"').replace('\\/', '/').replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '').replace('\\\\', '\\')
+    return res.strip()
+
 
 # メンズコスメ・メンズスキンケア・身だしなみ 特化検索テーマ一覧
 MENS_THEMES = [
@@ -397,8 +500,12 @@ def fetch_rakuten_mens_items(count=5):
     if not app_id or not access_key:
         raise ValueError("RAKUTEN_APP_ID and RAKUTEN_ACCESS_KEY must be set in environment variables.")
 
-    # ランダムにテーマを選定
-    theme_obj = random.choice(MENS_THEMES)
+    # 直近選ばれたテーマを避けて選定（同一テーマの過剰連続投稿を防止）
+    recent_themes = load_recent_themes(limit=12)
+    available_themes = [t for t in MENS_THEMES if t["theme"] not in recent_themes]
+    if not available_themes:
+        available_themes = MENS_THEMES
+    theme_obj = random.choice(available_themes)
     keyword = theme_obj["keyword"]
     print(f"Selected Theme: {theme_obj['theme']} (Keyword: {keyword})")
 
@@ -507,28 +614,21 @@ def fetch_rakuten_mens_items(count=5):
     return theme_obj, selected_items
 
 
-def call_llm(prompt, system_message, temperature=0.7, max_tokens=3000):
+def call_llm(prompt, system_message, temperature=0.7, max_tokens=4500):
     """
     ユーザー規則に基づく最新Geminiモデルローテーション ＆ Groqフォールバック
     Gemini 1.5系は完全廃止済みのため使用禁止。
     ローテーション順:
-    gemini-2.5-flash -> gemini-3.5-flash -> gemini-3.6-flash -> gemini-3.1-flash-lite -> gemini-3.5-flash-lite -> gemini-2.0-flash
+    gemini-3.1-flash-lite -> gemini-3.5-flash -> gemini-2.5-flash -> gemini-3.7-flash -> gemini-3.6-flash
     """
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         gemini_rotation = [
-            "gemini-2.5-flash",
-            "gemini-3.5-flash",
-            "gemini-3.6-flash",
             "gemini-3.1-flash-lite",
-            "gemini-3.5-flash-lite",
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
-            "gemini-3-flash",
-            "gemini-3.1-pro",
-            "gemini-3.7-flash"
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            "gemini-3.7-flash",
+            "gemini-3.6-flash"
         ]
         for model_name in gemini_rotation:
             try:
@@ -537,10 +637,8 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=3000):
                     "contents": [{"parts": [{"text": f"{system_message}\n\n{prompt}"}]}],
                     "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}
                 }
-                if any(v in model_name for v in ["2.5", "3.", "3-"]):
-                    payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
 
-                res = requests.post(api_url, json=payload, timeout=40)
+                res = requests.post(api_url, json=payload, timeout=45)
                 if res.status_code == 200:
                     data = res.json()
                     parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
@@ -556,7 +654,7 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=3000):
     # Groq API フォールバック
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
-        for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+        for model_name in ["llama-3.1-8b-instant"]:
             try:
                 headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
                 payload = {
@@ -581,62 +679,97 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=3000):
 
 
 def parse_json_from_llm(raw_text):
+    """
+    LLM出力からタイトルとHTMLを安全かつ堅牢に抽出。
+    マーカー形式（【TITLE】/【HTML】）およびJSON形式の双方に対応。
+    文字化け（mojibake）は絶対に許容しない。
+    """
     if not raw_text:
         return None
     text = raw_text.strip()
-    if "```json" in text:
-        text = text.split("```json", 1)[1].split("```")[0].strip()
-    elif "```" in text:
-        text = text.split("```", 1)[1].split("```")[0].strip()
-    
-    # 1. 通常の json.loads によるパース
-    first_brace = text.find('{')
-    last_brace = text.rfind('}')
+
+    # 1. マーカー形式（【TITLE】...【HTML】...）のパース
+    if "【TITLE】" in text and "【HTML】" in text:
+        try:
+            parts = text.split("【HTML】", 1)
+            raw_title = parts[0].split("【TITLE】", 1)[1].strip()
+            raw_html = parts[1].strip()
+
+            title = re.sub(r'^[`\'"]+|[`\'"]+$', '', raw_title).strip()
+            html = raw_html
+            if html.startswith("```html"):
+                html = html[7:]
+            elif html.startswith("```"):
+                html = html[3:]
+            if html.endswith("```"):
+                html = html[:-3]
+            html = html.strip()
+
+            if not is_mojibake(title) and not is_mojibake(html) and len(html) > 300:
+                print("[PARSER] Successfully parsed article via MARKER format.")
+                return {"title": title, "html": html}
+        except Exception as e:
+            print(f"[PARSER-WARN] Marker parsing failed: {e}")
+
+    # 2. JSON形式のパース
+    clean_json_text = text
+    if "```json" in clean_json_text:
+        clean_json_text = clean_json_text.split("```json", 1)[1].split("```")[0].strip()
+    elif "```" in clean_json_text:
+        clean_json_text = clean_json_text.split("```", 1)[1].split("```")[0].strip()
+
+    first_brace = clean_json_text.find('{')
+    last_brace = clean_json_text.rfind('}')
     if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        text_candidate = text[first_brace:last_brace+1]
+        text_candidate = clean_json_text[first_brace:last_brace+1]
         try:
             data = json.loads(text_candidate)
             if isinstance(data, dict) and "html" in data:
-                return data
+                t = str(data.get("title", "")).strip()
+                h = str(data.get("html", "")).strip()
+                if not is_mojibake(t) and not is_mojibake(h) and len(h) > 300:
+                    print("[PARSER] Successfully parsed article via standard JSON.")
+                    return {"title": t, "html": h}
         except Exception:
-            # 改行コードのエスケープ不備を修復試行
             try:
                 fixed = re.sub(r'(?<!\\)\n', '\\n', text_candidate)
                 data = json.loads(fixed)
                 if isinstance(data, dict) and "html" in data:
-                    return data
+                    t = str(data.get("title", "")).strip()
+                    h = str(data.get("html", "")).strip()
+                    if not is_mojibake(t) and not is_mojibake(h) and len(h) > 300:
+                        print("[PARSER] Successfully parsed article via newline-fixed JSON.")
+                        return {"title": t, "html": h}
             except Exception:
                 pass
 
-    # 2. JSON構文崩れ時の正規表現によるタイトルとHTMLの救出
+    # 3. 正規表現による救出
     try:
         title_match = re.search(r'"title"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', text)
-        title = title_match.group(1).encode().decode('unicode_escape') if title_match else None
-        
-        # HTMLコンテンツの抽出
-        # "html": "..." から末尾まで、あるいは <div class="mens-curation-article"> から </div> まで
+        title = safe_unescape_json_string(title_match.group(1)) if title_match else None
+
         html = None
         html_match = re.search(r'"html"\s*:\s*"(.*)"\s*\}?$', text, re.DOTALL)
         if html_match:
-            try:
-                html = html_match.group(1).encode().decode('unicode_escape')
-            except Exception:
-                html = html_match.group(1)
+            html = safe_unescape_json_string(html_match.group(1))
         elif '<div class="mens-curation-article"' in text:
             start_idx = text.find('<div class="mens-curation-article"')
             end_idx = text.rfind('</div>')
             if end_idx > start_idx:
                 html = text[start_idx:end_idx+6]
-                
+
         if html and len(html) > 300:
             if not title:
-                # 記事内の最初の見出しなどからタイトルを推定
                 h2_m = re.search(r'<h[1-3][^>]*>(.*?)</h[1-3]>', html)
-                title = h2_m.group(1) if h2_m else "メンズ注目の身だしなみアイテム厳選"
-            print("[JSON-RESCUE] Successfully recovered title and HTML from raw LLM output via regex parser!")
-            return {"title": title, "html": html}
+                title = safe_unescape_json_string(h2_m.group(1)) if h2_m else "メンズ注目の身だしなみアイテム厳選"
+
+            if not is_mojibake(title) and not is_mojibake(html):
+                print("[PARSER] Successfully recovered clean title and HTML from raw text via regex rescue!")
+                return {"title": title, "html": html}
+            else:
+                print("[PARSER] Corrupted encoding (mojibake) detected in rescued text. Discarding.")
     except Exception as e:
-        print(f"[JSON-RESCUE] Fallback parsing failed: {e}")
+        print(f"[PARSER-WARN] Fallback parsing failed: {e}")
 
     return None
 
@@ -644,34 +777,43 @@ def parse_json_from_llm(raw_text):
 def generate_curated_mens_article(theme_obj, items):
     """
     選抜された複数個のメンズコスメ商品を比較・紹介する特集記事を生成
-    『10月最新メンズコスメ5選』等の形式で、テンプレート使い回しを排除した自然な記事構成
+    過去タイトルとの重複や類似を完全排除し、商品固有の悩みに寄り添った独立記事を執筆
     """
     current_month = datetime.now().month
     count = len(items)
     
     items_desc_list = []
+    item_keywords_all = []
     for idx, it in enumerate(items, 1):
         clean_name = it.get('cleanName', '')
         brand, product = extract_brand_and_product(clean_name)
         it['brand'] = brand
         it['product'] = product
+        caption_snippet = clean_rakuten_item_caption(it.get('itemCaption', ''))[:160]
         items_desc_list.append(
             f"--- 【商品 {idx}】 ---\n"
             f"ブランド名: {brand}\n"
             f"商品名: {product}\n"
             f"フル名称: {clean_name}\n"
             f"価格: {it.get('itemPrice', '')}円\n"
-            f"概要: {it.get('itemCaption', '')[:200]}\n"
+            f"特徴・概要: {caption_snippet}\n"
             f"画像URL: {it['imgUrl']}\n"
             f"アフィリエイトURL: {it['affUrl']}\n"
         )
+        item_keywords_all.append(product)
     items_context = "\n".join(items_desc_list)
 
+    # 過去タイトルの一覧（直近15件）をプロンプトに含めて重複を禁止
+    past_titles = load_posted_titles()[-15:]
+    past_titles_str = "\n".join([f"- {t}" for t in past_titles]) if past_titles else "（過去の重複なし）"
+
     system_message = (
-        "あなたは20代〜40代男性向けの身だしなみ・メンズスキンケア・メンズコスメ専門の敏腕エディターです。"
-        "『清潔感』『好印象』『手軽さ』を重視する男性読者の悩みに寄り添い、雑誌やWebメディアのような洗練された比較・おすすめ記事を執筆します。"
-        "『注目1』『注目2』といった単調な機械的見出しや、AI臭いテンプレート感（『いかがでしたでしょうか』『〜ですね！』の連発など）は一切排除してください。"
-        "出力は必ず指定のJSONフォーマットのみとしてください。"
+        "あなたはメンズ美容・身だしなみ専門の敏腕エディターです。"
+        "男性がリアルに抱える切実な悩み（テカリ、毛穴の黒ずみ、青ヒゲ、乾燥、頭皮のニオイ、清潔感の欠如など）を解決する、具体的で魅力的な特集記事を執筆します。"
+        "【絶対禁止ルール】:\n"
+        "1. 『注目1』『注目2』や『いかがでしたでしょうか』『〜ですね！』といった単調なAI臭い定型文・使い回しテンプレートは一切使用禁止。\n"
+        "2. 過去のタイトル構文（『◯月最新！男を上げる〜』『◯月おすすめ！失敗しない〜』）の模倣・使い回しは完全禁止。\n"
+        "3. 出力は指定のJSONフォーマットのみ（Markdownコードブロックなし、余計な前置き・解説なし）。"
     )
 
     prompt = f"""以下は楽天市場から厳選したメンズコスメ・身だしなみアイテム{count}点のデータです。
@@ -681,126 +823,110 @@ def generate_curated_mens_article(theme_obj, items):
 【掲載アイテム一覧】:
 {items_context}
 
+【過去のタイトル例（これらと構文や表現が重複・酷似するものは完全禁止）】:
+{past_titles_str}
+
 【記事作成要件】:
 1. タイトル（title）:
-   - 『{current_month}月最新』または『{current_month}月厳選』と、具体的なアイテム数（{count}選など）を含める。
-   - 読者が思わずクリックしたくなる実用的かつ魅力的なタイトル（最大38文字程度）。
+   - 過去のタイトルと被らない、今回の商品群の特徴や男性の悩みにフォーカスしたオリジナルのタイトル。
+   - 具体的な数字（{count}選など）を含め、クリックしたくなる魅力を38文字程度で表現。
 2. 本文HTML（html）:
    - 全体を `<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">` で囲む。
    - 導入部（リード文）:
-     - なぜ今このケアやアイテム選びが男の印象を変えるのか、男性特有のリアルな悩み（清潔感、テカリ、乾燥、毛穴、ヒゲ剃りダメージ等）を交えて300〜400文字程度でしっかり惹きつける。
-   - 各商品紹介（1〜{count}）の構成【★超重要】:
-     - 見出しに『注目1』『注目2』や『第◯位』といった単調な言葉は【完全禁止】。
-     - `<h3>` タグは、【刺さるキャッチコピー】＋「【ブランド名】商品名」の形式に。
-       例: `<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">目元の老け見え・クマを一網打尽！「OPENEYES」メンズアイクリーム</h3>`
-     - 見出し直下には、**固定テンプレート文（『◯月の厳選ポイント』など）は使わず**、その商品独自の魅力・選定理由を直球で伝える生々しい推薦フック文（太字）を添える。
-       例: `<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 伸びが良いジェルが角層まで即浸透。夕方のどんより顔もこれ1本でシャキッと引き締まる！</p>`
-       例: `<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>商品スペック:</b> ブランド名 フル商品名（参考価格: ◯◯◯◯円）</p>`
-     - 画像を表示: `<div style="text-align: center; margin: 18px 0;"><img src="画像URL" alt="商品名" style="max-width: 320px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>`
-     - 詳細レビュー本文:
-       - 使用感や仕上がり、どんな肌質・悩みの男性に最適かを丁寧に解説（150〜200文字程度）。
-       - 商品の具体的な特徴やおすすめ理由を3つの箇条書きリスト（`<ul><li style="margin-bottom: 6px;">`）で整理。
-     - 楽天市場の購入リンクボタン（洗練されたデザイン）を配置:
-       `<div style="text-align: center; margin: 20px 0;"><a href="アフィリエイトURL" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>`
-   - 一目でわかる！厳選アイテム徹底比較表（テーブル）:
-     - 各商品の紹介が終わった直後に、読者が一目で違いを比較できるよう、レスポンシブなHTML比較テーブル（`<table>`）を必ず挿入する。
-     - テーブルの列構成: 【商品名 / ブランド】【価格目安】【主な強み・特徴】【こんな男性におすすめ】
-     - テーブルデザイン:
-       `<div style="overflow-x: auto; margin: 35px 0;"><table style="width: 100%; border-collapse: collapse; min-width: 500px; font-size: 14px; text-align: left;"><thead style="background-color: #edf2f7;"><tr style="border-bottom: 2px solid #cbd5e0;"><th style="padding: 10px 12px;">商品・ブランド</th><th style="padding: 10px 12px;">価格目安</th><th style="padding: 10px 12px;">主な特徴</th><th style="padding: 10px 12px;">おすすめな人</th></tr></thead><tbody>...各商品行...</tbody></table></div>`
-   - まとめセクション:
-     - `<h3>総括：失敗しないための選び方ガイド</h3>`
-     - 今回の{count}選の中から「迷ったらコレ！」というタイプ別（コスパ重視、時短重視、徹底ケア重視など）の明確な選び分けガイドを記述し、背中を押すメッセージで締めくくる（250文字程度）。
-3. 【厳格な品質ルール】:
-   - Amazon、Yahoo!ショッピング、他ECサイトの言及は厳禁。
-   - 途中で文章が途切れず、すべてのHTMLタグが正常に閉じられていること。
-   - 記事全体の情報量を充実させ、読者がこれ1本で迷わず選べるボリューム（本文合計1800文字以上目安）にすること。
+     - 今回選んだ{count}点の商品がどんな男性のどんな悩みを解消するのか、具体的かつ共感を呼ぶ文面で300〜400文字程度執筆。
+   - 各商品紹介（1〜{count}）:
+     - `<h3>` は【刺さるキャッチコピー】＋「【ブランド名】商品名」の形式。
+     - 見出し直下に、その商品独自の強みをズバッと伝える推薦フック文（`<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ ...</p>`）。
+     - 画像表示: `<div style="text-align: center; margin: 18px 0;"><img src="画像URL" alt="商品名" style="max-width: 320px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>`
+     - レビュー本文: 使用感や仕上がり、どんな肌質・悩みの男性に最適かを丁寧に解説（150〜200文字）。
+     - 3つの箇条書きメリット（`<ul><li style="margin-bottom: 6px;">`）。
+     - 購入リンクボタン: `<div style="text-align: center; margin: 20px 0;"><a href="アフィリエイトURL" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>`
+   - 一目でわかる！厳選アイテム徹底比較表（`<table>`）を必ず挿入。
+   - まとめセクション: `<h3>総括：タイプ別の選び方ガイド</h3>` を添えて背中を押すメッセージで締めくくる。
 
 【出力形式】
-{{
-    "title": "記事タイトル",
-    "html": "完全なHTML文字列"
-}}
+以下のマーカー形式で出力してください：
+
+【TITLE】
+（38文字前後の魅力的なオリジナル記事タイトル）
+
+【HTML】
+<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+（完成した完全な本文HTML）
+</div>
 """
 
-    raw_response = call_llm(prompt, system_message, temperature=0.75, max_tokens=3600)
-    parsed = parse_json_from_llm(raw_response)
+    parsed = None
+    for attempt in range(2):
+        raw_response = call_llm(prompt, system_message, temperature=0.75, max_tokens=4500)
+        parsed = parse_json_from_llm(raw_response)
+        if parsed and parsed.get("title") and parsed.get("html"):
+            is_dup, past_match, sim = is_title_duplicate_or_similar(parsed["title"])
+            if is_dup:
+                print(f"[TITLE-DUP-DETECTED] Generated title '{parsed['title']}' is too similar to '{past_match}' (similarity: {sim:.2f}). Retrying generation...")
+                prompt += f"\n\n※注意: 先ほど生成されたタイトル「{parsed['title']}」は過去タイトルと類似しているため却下されました。全く異なる表現・切り口でタイトルを再生成してください。"
+                parsed = None
+                continue
+            else:
+                break
 
     if not parsed:
-        print("Fallback: LLM generation was incomplete or non-JSON. Generating clean curated fallback.")
-        random_prefixes = [
-            f"{current_month}月最新！男を上げる",
-            f"{current_month}月厳選！清潔感をつくる",
-            f"2026年{current_month}月版！男の肌・身だしなみを劇的に整える",
-            f"{current_month}月おすすめ！失敗しない",
-            f"大人の清潔感！{current_month}月注目の"
-        ]
-        chosen_prefix = random.choice(random_prefixes)
-        default_title = f"{chosen_prefix}{theme_obj['theme'].replace('選抜', '')}{count}選"
+        print("[FALLBACK] LLM generation unavailable or duplicated. Generating fully customized independent article.")
+        main_item = items[0]
+        main_product = main_item.get("product") or main_item.get("cleanName", "厳選ギア")
+        lead_brand = main_item.get("brand") or "注目"
         
-        fallback_catchphrases = [
-            "第一印象を劇的に底上げする実力派",
-            "男の清潔感をカンストさせる神ギア",
-            "忙しい朝でも手軽に垢抜ける即効アイテム",
-            "乾燥やテカリを寄せ付けない大人の必需品",
-            "女性ウケ・ビジネス好感度を両立する鉄板品"
+        # 過去タイトルと重複しないタイトルを動的に生成
+        candidate_titles = [
+            f"{current_month}月注目の身だしなみ！{main_product[:15]}など男の清潔感を高めるギア{count}選",
+            f"大人の身だしなみを格上げ！「{lead_brand}」ほか今選ぶべきメンズ注目アイテム{count}選",
+            f"第一印象で圧倒的な清潔感を放つ！{current_month}月にチェックすべき男の厳選{count}選",
+            f"男のリアルな悩みを即解決！{main_product[:14]}を含む実力派メンズギア{count}選"
         ]
-        
-        fallback_hooks = [
-            "⚡ 面倒な手間をゼロにしつつ、清潔感と肌のコンディションを一撃で底上げする万能ギア。",
-            "⚡ ベタつきのない快適な使い心地で、夕方まで清潔な印象が長続きする頼れる逸品。",
-            "⚡ 初心者でも失敗なし。毎日の身だしなみに取り入れるだけで垢抜けスピードが加速する。",
-            "⚡ 厳選された成分設計で、気になる大人の肌悩みをスマートにケアする実力派。",
-            "⚡ コスパと実用性を高次元で両立。周りと差をつけたいなら真っ先に押さえておきたい。"
-        ]
-        
+        chosen_title = None
+        for cand in candidate_titles:
+            is_dup, _, _ = is_title_duplicate_or_similar(cand)
+            if not is_dup:
+                chosen_title = cand
+                break
+        if not chosen_title:
+            chosen_title = f"{current_month}月厳選！{main_product[:12]}ほか男を磨く優秀アイテム{count}選 ({random.randint(100, 999)})"
+
         body_parts = []
         body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">')
-        body_parts.append(f'<p>清潔感のある肌や整えられた身だしなみは、ビジネスでもプライベートでも第一印象を大きく左右します。特に季節の変わり目は、皮脂バランスの乱れや乾燥など男性特有の肌トラブルが起きやすいタイミング。今回は今月チェックしておきたい注目のメンズコスメ・身だしなみアイテムを厳選して{count}つご紹介します。</p>')
+        body_parts.append(f'<p>日々の身だしなみや肌のお手入れは、ビジネス・プライベートを問わず第一印象を決定づける最重要ファクターです。今回は「{theme_obj["theme"].replace("選抜", "")}」をテーマに、楽天市場で注目を集めている実力派アイテム{count}点を厳選ピックアップしました。使いやすさと確かな実感にこだわったラインナップをご覧ください。</p>')
         
-        table_rows = []
         for idx, it in enumerate(items, 1):
             name = it["cleanName"]
-            brand, product = extract_brand_and_product(name)
+            brand, product = it.get("brand") or "注目ブランド", it.get("product") or name
             price = it.get("itemPrice", "")
             img = it["imgUrl"]
             url = it["affUrl"]
-            caption = it.get("itemCaption", "")
+            caption = clean_rakuten_item_caption(it.get("itemCaption", ""))
             if not caption:
-                caption = "使い心地と効果にこだわったメンズ専用の身だしなみアイテムです。"
+                caption = f"男性の肌質や使い勝手を追求して開発された「{brand}」の注目のケアギア。"
             elif not caption.endswith(('。', '！', '!')):
                 caption += '。'
-            catch = fallback_catchphrases[(idx - 1) % len(fallback_catchphrases)]
-            hook = fallback_hooks[(idx - 1) % len(fallback_hooks)]
             
-            # 見出しから「注目◯」や「◯月の厳選ポイント」等のテンプレを排除
-            body_parts.append(f'<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">{catch}！「{brand}」{product[:22]}</h3>')
-            body_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">{hook}</p>')
+            body_parts.append(f'<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">「{brand}」{product[:24]}</h3>')
+            body_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 男の身だしなみを手間なく底上げする実用性と確かな品質を両立</p>')
             body_parts.append(f'<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>商品スペック:</b> {name}（価格目安: {price}円）</p>')
             
             if img:
                 body_parts.append(f'<div style="text-align:center; margin:18px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>')
             body_parts.append(f'<p style="margin: 14px 0;">{caption}</p>')
             body_parts.append(f'<ul style="background-color: #f7fafc; border: 1px solid #edf2f7; padding: 15px 15px 15px 35px; border-radius: 6px; margin: 15px 0;">')
-            body_parts.append(f'<li style="margin-bottom: 6px;">男の肌に心地よく馴染むストレスフリーなテクスチャー</li>')
-            body_parts.append(f'<li style="margin-bottom: 6px;">毎日のケアを手間なく続けられる実用的な設計</li>')
-            body_parts.append(f'<li>清潔感のある自然な仕上がりで第一印象アップ</li>')
+            body_parts.append(f'<li style="margin-bottom: 6px;">忙しい朝や疲れた夜でも無理なく続けられる快適な使用感</li>')
+            body_parts.append(f'<li style="margin-bottom: 6px;">男特有の皮脂や乾燥トラブルを考え抜いた成分・設計</li>')
+            body_parts.append(f'<li>清潔感のある洗練された第一印象をサポート</li>')
             body_parts.append(f'</ul>')
             body_parts.append(f'<div style="text-align:center; margin:20px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>')
-            
-            table_rows.append(
-                f'<tr style="border-bottom: 1px solid #e2e8f0;">'
-                f'<td style="padding: 10px 12px; font-weight: bold; color: #2d3748;">{brand}<br><span style="font-size: 12px; font-weight: normal; color: #718096;">{product[:16]}</span></td>'
-                f'<td style="padding: 10px 12px; color: #c53030; font-weight: bold;">{price}円</td>'
-                f'<td style="padding: 10px 12px;">{catch}</td>'
-                f'<td style="padding: 10px 12px; font-size: 13px;">清潔感を即座に上げたい方</td>'
-                f'</tr>'
-            )
 
         body_parts.append(build_comparison_table_and_summary(items, count))
         body_parts.append('</div>')
         
         parsed = {
-            "title": default_title,
+            "title": chosen_title,
             "html": "".join(body_parts)
         }
 
@@ -1279,8 +1405,11 @@ def main():
 
         print(f"Blogger Publication Complete: {blogger_post_url}")
 
-        # 5. キャッシュ保存
+        # 5. キャッシュ保存 ＆ タイトル・テーマ履歴保存（重複防止）
         save_to_cache(item_codes)
+        save_posted_title(title)
+        save_recent_theme(theme_obj["theme"])
+        print(f"Saved title and theme to history to prevent future duplicates.")
 
         # 6. ブルースカイへの自動投稿（チー牛ラボ 〜劇的垢抜けアイテム研究〜）
         try:
