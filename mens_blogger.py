@@ -1329,55 +1329,106 @@ def post_to_blogger(title, content):
                         title_input.fill(title)
                         time.sleep(1.5)
 
-                        print("Focusing on editor body...")
-                        page.keyboard.press('Tab')
-                        time.sleep(0.5)
-                        page.keyboard.press('Tab')
-                        time.sleep(1.0)
-
-                        try:
-                            editor_body = page.locator('div[aria-label="本文"], div[aria-label="Body"], div[role="textbox"], iframe').locator("visible=true").first
-                            editor_body.click(timeout=3000)
-                        except:
-                            pass
-
-                        print("Injecting HTML content via clipboard paste...")
-                        page.evaluate('''html => {
+                        print("Injecting HTML content...")
+                        # 1. BloggerのHTML編集モード (CodeMirror) への直接注入
+                        cm_injected = page.evaluate('''html => {
                             try {
-                                const blob = new Blob([html], { type: 'text/html' });
-                                const data = [new ClipboardItem({ 'text/html': blob })];
-                                navigator.clipboard.write(data);
+                                const cmEl = document.querySelector('.CodeMirror');
+                                if (cmEl && cmEl.CodeMirror) {
+                                    cmEl.CodeMirror.setValue(html);
+                                    if (typeof cmEl.CodeMirror.save === 'function') {
+                                        cmEl.CodeMirror.save();
+                                    }
+                                    // 変更・保存イベントを発火させる
+                                    cmEl.CodeMirror.focus();
+                                    cmEl.CodeMirror.replaceRange(' ', cmEl.CodeMirror.getCursor());
+                                    cmEl.CodeMirror.execCommand('deleteCharBackward');
+                                    return true;
+                                }
                             } catch (e) {
-                                console.error('Clipboard write failed:', e);
+                                console.error('CodeMirror inject error:', e);
                             }
+                            return false;
                         }''', content)
-                        time.sleep(1.5)
 
-                        page.keyboard.press('Control+V')
-                        page.keyboard.press('Meta+V')
-                        time.sleep(2.0)
+                        if cm_injected:
+                            print("[BLOGGER-INJECT] Successfully injected HTML directly into CodeMirror editor.")
+                            time.sleep(2.5)
+                        else:
+                            # 2. リッチテキスト編集モード時のフォールバック (クリップボードペースト)
+                            print("[BLOGGER-INJECT] CodeMirror not found. Falling back to clipboard paste...")
+                            print("Focusing on editor body...")
+                            page.keyboard.press('Tab')
+                            time.sleep(0.5)
+                            page.keyboard.press('Tab')
+                            time.sleep(1.0)
 
-                        # オートセーブを誘発
-                        page.keyboard.press('Space')
-                        time.sleep(0.5)
-                        page.keyboard.press('Backspace')
-                        time.sleep(3.0)
+                            try:
+                                editor_body = page.locator('div[aria-label="本文"], div[aria-label="Body"], div[role="textbox"], iframe').locator("visible=true").first
+                                editor_body.click(timeout=3000)
+                            except:
+                                pass
 
+                            page.evaluate('''html => {
+                                try {
+                                    const blob = new Blob([html], { type: 'text/html' });
+                                    const data = [new ClipboardItem({ 'text/html': blob })];
+                                    navigator.clipboard.write(data);
+                                } catch (e) {
+                                    console.error('Clipboard write failed:', e);
+                                }
+                            }''', content)
+                            time.sleep(1.5)
+
+                            page.keyboard.press('Control+V')
+                            page.keyboard.press('Meta+V')
+                            time.sleep(2.0)
+
+                            # オートセーブを誘発
+                            page.keyboard.press('Space')
+                            time.sleep(0.5)
+                            page.keyboard.press('Backspace')
+                            time.sleep(2.0)
+
+                        # CodeMirrorまたはページのHTMLを検証
+                        cm_val = page.evaluate('''() => {
+                            const cmEl = document.querySelector('.CodeMirror');
+                            return (cmEl && cmEl.CodeMirror) ? cmEl.CodeMirror.getValue() : '';
+                        }''')
                         page_html = page.content()
-                        # 本文が確実に貼り付けられたか検証（imgが複数、aリンク、テーブルが含まれること）
+                        effective_html = cm_val if cm_val else page_html
+
                         expected_img_min = max(2, len(re.findall(r'<img', content)) - 1)
-                        actual_img_count = page_html.count("<img")
-                        if actual_img_count >= expected_img_min and ("href" in page_html or "http" in page_html) and "<table" in page_html:
+                        actual_img_count = effective_html.count("<img")
+                        has_links = "href" in effective_html or "http" in effective_html
+                        has_table = "<table" in effective_html
+
+                        if actual_img_count >= expected_img_min and has_links and has_table:
                             print(f"Validation passed: Body content successfully inserted into Blogger editor (found {actual_img_count} images & table).")
                             success = True
                             break
                         else:
-                            print(f"Validation check warning: Editor content verification incomplete (imgs found: {actual_img_count}/{expected_img_min}, table: {'<table' in page_html}). Retrying...")
+                            print(f"Validation check warning: Editor content verification incomplete (imgs found: {actual_img_count}/{expected_img_min}, table: {has_table}). Retrying...")
                     except Exception as e:
                         print(f"Error during attempt {attempt+1}: {e}")
                     time.sleep(2)
 
                 if not success:
+                    # 失敗時に未完了下書きがBlogger上に残らないよう後始末
+                    try:
+                        print("[BLOGGER-CLEANUP] Post validation failed. Discarding unfinished draft...")
+                        page.goto(f"https://draft.blogger.com/blog/posts/{blog_id}", wait_until="domcontentloaded", timeout=15000)
+                        time.sleep(2.0)
+                        discard_btn = page.locator('div[aria-label="この投稿を破棄"]').first
+                        if discard_btn.is_visible(timeout=3000):
+                            discard_btn.dispatch_event('click')
+                            time.sleep(1.0)
+                            page.keyboard.press('Enter')
+                            time.sleep(1.5)
+                            print("[BLOGGER-CLEANUP] Discarded unfinished draft successfully.")
+                    except Exception as discard_err:
+                        print(f"[BLOGGER-CLEANUP-WARN] Failed to discard draft: {discard_err}")
+
                     raise RuntimeError("Critical: Body injection could not be validated after multiple attempts.")
 
 
