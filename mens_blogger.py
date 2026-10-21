@@ -641,11 +641,17 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=4500):
                 res = requests.post(api_url, json=payload, timeout=45)
                 if res.status_code == 200:
                     data = res.json()
-                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                    text = "".join(p.get("text", "") for p in parts if p.get("text")).strip()
-                    if len(text) > 50:
-                        print(f"Generated successfully with Gemini model: {model_name}")
-                        return text
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        finish_reason = candidates[0].get("finishReason", "")
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        text = "".join(p.get("text", "") for p in parts if p.get("text")).strip()
+                        if finish_reason == "MAX_TOKENS":
+                            print(f"[WARN] Gemini model {model_name} hit MAX_TOKENS limit (output cut off). Skipping this response.")
+                            continue
+                        if len(text) > 50:
+                            print(f"Generated successfully with Gemini model: {model_name}")
+                            return text
                 else:
                     print(f"Gemini API ({model_name}) error {res.status_code}: {res.text[:120]}")
             except Exception as e:
@@ -856,18 +862,49 @@ def generate_curated_mens_article(theme_obj, items):
 </div>
 """
 
+    # 記事が全商品を網羅し、完全な構造を持つか検証する関数
+    def validate_article_completeness(html_str, expected_items):
+        if not html_str or len(html_str.strip()) < 1200:
+            return False, f"文字数不足 ({len(html_str.strip()) if html_str else 0}文字)"
+        # 全商品の画像URLが含まれているか
+        img_missing = [it.get("imgUrl") for it in expected_items if it.get("imgUrl") and it.get("imgUrl") not in html_str]
+        if img_missing:
+            return False, f"商品画像欠落 ({len(img_missing)}件未掲載)"
+        # 全商品のアフィリエイトURLが含まれているか
+        aff_missing = [it.get("affUrl") for it in expected_items if it.get("affUrl") and it.get("affUrl") not in html_str]
+        if aff_missing:
+            return False, f"アフィリエイトリンク欠落 ({len(aff_missing)}件未掲載)"
+        # 各商品紹介の見出し（h3）が商品数と同等以上あるか
+        h3_count = html_str.count("<h3")
+        if h3_count < len(expected_items):
+            return False, f"商品見出し(h3)不足 ({h3_count}個 < 期待値{len(expected_items)}個)"
+        # 比較テーブルが含まれているか
+        if "<table" not in html_str:
+            return False, "比較テーブル(table)欠落"
+        return True, "OK"
+
     parsed = None
-    for attempt in range(2):
+    for attempt in range(3):
         raw_response = call_llm(prompt, system_message, temperature=0.75, max_tokens=4500)
         parsed = parse_json_from_llm(raw_response)
         if parsed and parsed.get("title") and parsed.get("html"):
+            # タイトル重複チェック
             is_dup, past_match, sim = is_title_duplicate_or_similar(parsed["title"])
             if is_dup:
                 print(f"[TITLE-DUP-DETECTED] Generated title '{parsed['title']}' is too similar to '{past_match}' (similarity: {sim:.2f}). Retrying generation...")
                 prompt += f"\n\n※注意: 先ほど生成されたタイトル「{parsed['title']}」は過去タイトルと類似しているため却下されました。全く異なる表現・切り口でタイトルを再生成してください。"
                 parsed = None
                 continue
+
+            # 本文の完全性チェック（5商品全掲載・画像・リンク・テーブルの欠損を許さない）
+            is_complete, comp_msg = validate_article_completeness(parsed["html"], items)
+            if not is_complete:
+                print(f"[ARTICLE-INCOMPLETE-DETECTED] Generated article is incomplete: {comp_msg}. Retrying LLM generation (attempt {attempt+1}/3)...")
+                prompt += f"\n\n※重要: 前回の生成は【{comp_msg}】のため不完全でした。必ず掲載アイテム一覧の全{count}商品を1点ずつ画像・解説・リンク・メリット付きで余すことなく執筆し、比較表まで完結させてください。"
+                parsed = None
+                continue
             else:
+                print("[ARTICLE-VALIDATION] LLM generated article passed all completeness checks.")
                 break
 
     if not parsed:
@@ -1019,23 +1056,31 @@ def strict_quality_check_and_refine(title, html_content, items):
 【厳格校正ルール】:
 1. 誤字脱字、てにをは、不自然な文言を徹底的に修正してください。
 2. 【★最重要】文章が途中で力尽きたり、末尾が『...』や『…』で途切れる現象は【完全禁止】です。すべての文章を「〜です。」「〜ます。」などの自然な日本語の句点（。）で完璧に完結させてください。
-3. 『注目1』『注目2』や『◯月の厳選ポイント』などの安易なテンプレ表現が残っている場合は完全に削除し、商品ごとに異なる生々しい推薦文・洗練された見出しに整えてください。
-4. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
-5. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
-6. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
-7. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
+3. 【★絶対厳守】掲載されているすべての商品紹介セクション（h3、画像、フック文、解説、メリット、購入ボタン）および末尾の比較表・総括を【絶対に削除・省略・要約せず、すべて完全に残してください】。
+4. 『注目1』『注目2』や『◯月の厳選ポイント』などの安易なテンプレ表現が残っている場合は完全に削除し、商品ごとに異なる生々しい推薦文・洗練された見出しに整えてください。
+5. 『いかがでしたでしょうか？』などの陳腐なAIブログ特有の言い回しを削除し、読者の知的好奇心と購入意欲を刺激する洗練された男性美容ライターの文章に整えてください。
+6. すべての見出し（h2, h3）と段落（p）、リスト（ul, li）、divタグが正しく閉じられており、文末が途中で切れていないことを確認してください。
+7. HTMLタグ構造やリンクURL、画像タグは一切壊さず維持してください。
+8. 余計な挨拶や解説は不要です。ブラッシュアップされた純粋なHTML本文のみを出力してください。
 """
     proofread_system = "あなたは大手男性美容WEBマガジンの最高編集責任者です。妥協のない厳格な校正を行い、途中で途切れることのない高品質なHTMLのみを返します。"
-    refined_html = call_llm(proofread_prompt, proofread_system, temperature=0.4, max_tokens=3800)
+    refined_html = call_llm(proofread_prompt, proofread_system, temperature=0.3, max_tokens=4500)
 
-    if refined_html and len(refined_html.strip()) > 300:
-        refined_html = refined_html.strip()
-        if "```html" in refined_html:
-            refined_html = refined_html.split("```html", 1)[1].split("```")[0].strip()
-        elif "```" in refined_html:
-            refined_html = refined_html.split("```", 1)[1].split("```")[0].strip()
-        html_content = refined_html
-        print("Refinement step completed successfully.")
+    if refined_html and len(refined_html.strip()) > 500:
+        cleaned_refined = refined_html.strip()
+        if "```html" in cleaned_refined:
+            cleaned_refined = cleaned_refined.split("```html", 1)[1].split("```")[0].strip()
+        elif "```" in cleaned_refined:
+            cleaned_refined = cleaned_refined.split("```", 1)[1].split("```")[0].strip()
+        
+        # 校正によって商品や画像が脱落していないか安全確認
+        refined_imgs = [it.get("imgUrl") for it in items if it.get("imgUrl") and it.get("imgUrl") in cleaned_refined]
+        refined_h3_count = cleaned_refined.count("<h3")
+        if len(refined_imgs) >= len(items) - 1 and refined_h3_count >= len(items):
+            html_content = cleaned_refined
+            print("[REFINE] Refinement step completed successfully without item truncation.")
+        else:
+            print(f"[REFINE-WARN] Refined HTML lost items or images (imgs: {len(refined_imgs)}/{len(items)}, h3: {refined_h3_count}). Reverting to pre-refinement HTML.")
 
     # チェック4.5: 三点リーダー（... や …）および文末途切れの機械的撲滅
     # 「...」や「…」が段落内や文末に残っている場合は句点に置換
@@ -1302,12 +1347,15 @@ def post_to_blogger(title, content):
                         time.sleep(3.0)
 
                         page_html = page.content()
-                        if "<img" in page_html and ("href" in page_html or "http" in page_html):
-                            print("Validation passed: Body content successfully inserted into Blogger editor.")
+                        # 本文が確実に貼り付けられたか検証（imgが複数、aリンク、テーブルが含まれること）
+                        expected_img_min = max(2, len(re.findall(r'<img', content)) - 1)
+                        actual_img_count = page_html.count("<img")
+                        if actual_img_count >= expected_img_min and ("href" in page_html or "http" in page_html) and "<table" in page_html:
+                            print(f"Validation passed: Body content successfully inserted into Blogger editor (found {actual_img_count} images & table).")
                             success = True
                             break
                         else:
-                            print("Validation check warning: Editor content verification did not find expected tags. Retrying...")
+                            print(f"Validation check warning: Editor content verification incomplete (imgs found: {actual_img_count}/{expected_img_min}, table: {'<table' in page_html}). Retrying...")
                     except Exception as e:
                         print(f"Error during attempt {attempt+1}: {e}")
                     time.sleep(2)
@@ -1386,6 +1434,48 @@ def main():
 
         # 3. 厳格な品質チェック＆プロ校正
         final_html = strict_quality_check_and_refine(title, html_content, items)
+
+        # 投稿直前ガード: 不完全な記事はBloggerに絶対に投稿させない
+        final_img_count = final_html.count("<img")
+        final_h3_count = final_html.count("<h3")
+        final_has_table = "<table" in final_html
+        if final_img_count < len(items) - 1 or final_h3_count < len(items) or not final_has_table or len(final_html) < 2000:
+            print(f"[CRITICAL-REPAIR] Article content was incomplete before posting (imgs: {final_img_count}, h3: {final_h3_count}, table: {final_has_table}). Falling back to robust complete fallback generation.")
+            # 確実・安全なフォールバックで記事全体を再生成
+            main_item = items[0]
+            main_product = main_item.get("product") or main_item.get("cleanName", "厳選ギア")
+            fb_parts = [
+                f'<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif;">',
+                f'<p>日々の身だしなみや肌のお手入れは、ビジネス・プライベートを問わず第一印象を決定づける最重要ファクターです。今回は「{theme_obj["theme"].replace("選抜", "")}」をテーマに、楽天市場で注目を集めている実力派アイテム{len(items)}点を厳選ピックアップしました。使いやすさと確かな実感にこだわったラインナップをご覧ください。</p>'
+            ]
+            for idx, it in enumerate(items, 1):
+                name = it["cleanName"]
+                brand, product = it.get("brand") or "注目ブランド", it.get("product") or name
+                price = it.get("itemPrice", "")
+                img = it["imgUrl"]
+                url = it["affUrl"]
+                caption = clean_rakuten_item_caption(it.get("itemCaption", ""))
+                if not caption:
+                    caption = f"男性の肌質や使い勝手を追求して開発された「{brand}」の注目のケアギア。"
+                elif not caption.endswith(('。', '！', '!')):
+                    caption += '。'
+                
+                fb_parts.append(f'<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">「{brand}」{product[:24]}</h3>')
+                fb_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 男の身だしなみを手間なく底上げする実用性と確かな品質を両立</p>')
+                fb_parts.append(f'<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>商品スペック:</b> {name}（価格目安: {price}円）</p>')
+                if img:
+                    fb_parts.append(f'<div style="text-align:center; margin:18px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>')
+                fb_parts.append(f'<p style="margin: 14px 0;">{caption}</p>')
+                fb_parts.append(f'<ul style="background-color: #f7fafc; border: 1px solid #edf2f7; padding: 15px 15px 15px 35px; border-radius: 6px; margin: 15px 0;">')
+                fb_parts.append(f'<li style="margin-bottom: 6px;">忙しい朝や疲れた夜でも無理なく続けられる快適な使用感</li>')
+                fb_parts.append(f'<li style="margin-bottom: 6px;">男特有の皮脂や乾燥トラブルを考え抜いた成分・設計</li>')
+                fb_parts.append(f'<li>清潔感のある洗練された第一印象をサポート</li>')
+                fb_parts.append(f'</ul>')
+                fb_parts.append(f'<div style="text-align:center; margin:20px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>')
+            fb_parts.append(build_comparison_table_and_summary(items, len(items)))
+            fb_parts.append('</div>')
+            final_html = "".join(fb_parts)
+            print("[CRITICAL-REPAIR] Completely reconstructed all 5 items with guaranteed images, links, and comparison table.")
 
         # 4. Bloggerへ自動投稿（room投稿は行わない）
         blogger_post_url = None
