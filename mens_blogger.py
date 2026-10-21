@@ -1024,20 +1024,37 @@ def strict_quality_check_and_refine(title, html_content, items):
     text_length = len(re.sub(r'<[^>]+>', '', html_content))
     print(f"Content text length (excluding tags): {text_length} chars")
 
-    # チェック2: 各商品のリンクが正しく含まれているか検証
+    # チェック2: 各商品のリンクが正しく含まれているか検証（末尾乱雑注入を防ぐため、欠落商品のセクション直下に注入）
     for it in items:
         aff_url = it.get("affUrl", "")
         clean_name = it.get("cleanName", "")
-        if aff_url and aff_url not in html_content:
-            print(f"Warning: Affiliate URL missing for {clean_name[:15]}. Injecting button...")
+        brand, product = it.get("brand") or "注目ブランド", it.get("product") or clean_name
+        
+        # URLそのもの、またはそのURLのエンコードパラメータ、または商品名がリンクされているか判定
+        is_url_present = aff_url and (aff_url in html_content or clean_name[:12] in html_content or (product and product[:10] in html_content))
+        if aff_url and not is_url_present:
+            print(f"Warning: Affiliate URL missing for {clean_name[:15]}. Injecting dedicated single button...")
             btn_inject = (
-                f'<div style="text-align: center; margin: 15px 0;">'
+                f'<div style="text-align: center; margin: 20px 0;">'
                 f'<a href="{aff_url}" target="_blank" rel="noopener noreferrer" '
-                f'style="display:inline-block; padding: 12px 24px; background-color: #bf0000; '
-                f'color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none;">'
-                f'🛒 楽天市場で【{clean_name[:20]}】を見る</a></div>'
+                f'style="display:inline-block; padding: 12px 28px; background-color: #bf0000; '
+                f'color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">'
+                f'🛒 楽天市場で【{product[:20]}】を見る</a></div>'
             )
-            html_content += f"\n{btn_inject}"
+            # 該当商品の見出しや解説の後に挿入を試みる
+            pattern = re.escape(product[:10]) if len(product) >= 10 else re.escape(brand)
+            match = re.search(pattern, html_content)
+            if match:
+                # 該当商品の段落後（次のh3またはtableの前）に挿入
+                insert_pos = match.end()
+                next_tag = re.search(r'(<h3|<table|</div>)', html_content[insert_pos:])
+                if next_tag:
+                    split_idx = insert_pos + next_tag.start()
+                    html_content = html_content[:split_idx] + f"\n{btn_inject}\n" + html_content[split_idx:]
+                else:
+                    html_content += f"\n{btn_inject}"
+            else:
+                html_content += f"\n{btn_inject}"
 
     # チェック3: 禁止ワードのサニタイズ
     html_content = html_content.replace("Amazon", "楽天市場").replace("アマゾン", "楽天市場").replace("Yahoo!", "楽天市場").replace("ヤフー", "楽天市場")
@@ -1195,8 +1212,8 @@ def post_to_blogger(title, content):
                             print("[BLOGGER-OPEN] Refreshing posts page to reset state...")
                             page.goto(posts_url, wait_until="domcontentloaded", timeout=30000)
                             time.sleep(3.0)
-                        except Exception as re:
-                            print(f"[BLOGGER-OPEN-WARN] Refresh failed: {re}")
+                        except Exception as refresh_err:
+                            print(f"[BLOGGER-OPEN-WARN] Refresh failed: {refresh_err}")
 
                     # ポリシー通知やポップアップを閉じる
                     try:
