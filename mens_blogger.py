@@ -184,123 +184,209 @@ def save_to_cache(item_codes):
             if code:
                 f.write(f"{code}\n")
 
+KNOWN_MENS_BRANDS = [
+    ("SHISEIDO MEN", "資生堂メン"),
+    ("BULK HOMME", "バルクオム"),
+    ("QUATTRO BOTANICO", "クワトロボタニコ"),
+    ("LIPPS BOY", "リップスボーイ"),
+    ("LIPPS", "リップス"),
+    ("OCEAN TRICO", "オーシャントリコ"),
+    ("GATSBY", "ギャツビー"),
+    ("LUCIDO", "ルシード"),
+    ("UNO", "ウーノ"),
+    ("OXY", "オキシー"),
+    ("UL・OS", "ウルオス"),
+    ("NULL", "ヌル"),
+    ("ZIGEN", "ジゲン"),
+    ("THE FUTURE", "ザフューチャー"),
+    ("WOOMEN", "ウーメン"),
+    ("HMENZ", "エイチメンズ"),
+    ("DISM", "ディズム"),
+    ("MARO17", "マーロ17"),
+    ("MARO", "マーロ"),
+    ("ANGFA", "アンファー"),
+    ("スカルプD", "スカルプD"),
+    ("LAB SERIES", "ラボシリーズ"),
+    ("CLINIQUE FOR MEN", "クリニーク フォー メン"),
+    ("CLINIQUE", "クリニーク"),
+    ("KIEHL'S", "キールズ"),
+    ("AESOP", "イソップ"),
+    ("THREE", "スリー"),
+    ("BAUM", "バウム"),
+    ("NIVEA MEN", "ニベアメン"),
+    ("メンズビオレ", "メンズビオレ"),
+    ("サクセス", "サクセス"),
+    ("TAVARAT", "タバラット"),
+    ("BROSH", "ブロッシュ"),
+    ("クールグリース", "クールグリース"),
+    ("バブロポマード", "バブロポマード"),
+    ("ナプラ", "ナプラ"),
+    ("ミルボン", "ミルボン"),
+    ("アリミノ", "アリミノ"),
+    ("中野製薬", "ナカノ"),
+    ("デミ", "デミ"),
+    ("ウエラ", "ウエラ")
+]
+
 def clean_rakuten_item_name(name):
-    """商品名から楽天特有のクーポンや記号ノイズを除去し、すっきりとした名称を抽出"""
+    """
+    楽天の長文SEOキーワード、クーポン、宣伝文句、容量表記を完全消去し、
+    読者が一目で理解できる自然で洗練された商品名（12〜20文字程度）へクレンジング
+    """
     if not name:
-        return "メンズコスメ注目アイテム"
-    cleaned = re.sub(r'【[^】]*】', '', name)
-    cleaned = re.sub(r'\[[^\]]*\]', '', cleaned)
-    cleaned = re.sub(r'（[^）]*）', '', cleaned)
-    cleaned = re.sub(r'\([^\)]*\)', '', cleaned)
-    cleaned = re.sub(r'[＼／★◆■●▼▲〜～!！?？]+', ' ', cleaned)
+        return "実力派メンズケアアイテム"
+        
+    cleaned = name
+    # 括弧とその中身を全除去（【楽天1位】、【送料無料】、【SPF50+】など）
+    cleaned = re.sub(r'【[^】]*】', ' ', cleaned)
+    cleaned = re.sub(r'\[[^\]]*\]', ' ', cleaned)
+    cleaned = re.sub(r'（[^）]*）', ' ', cleaned)
+    cleaned = re.sub(r'\([^\)]*\)', ' ', cleaned)
+    cleaned = re.sub(r'「[^」]*」', ' ', cleaned)
+    cleaned = re.sub(r'『[^』]*』', ' ', cleaned)
     
+    # 楽天の常套句・スペック・宣伝文句を徹底消去
     noise_patterns = [
         r'クーポン(?:で|\s*利用で|\s*配布中|\s*対象)?\s*[0-9,]+円?(?:OFF|off)?',
-        r'P[0-9]+倍',
-        r'ポイント[0-9]+倍',
-        r'送料無料',
-        r'即納',
-        r'あす楽',
-        r'マラソン(?:限定)?',
-        r'スーパーセール',
-        r'お買い物マラソン',
+        r'P[0-9]+倍', r'ポイント[0-9]+倍', r'送料無料', r'即納', r'あす楽',
+        r'マラソン(?:限定)?', r'スーパーセール', r'お買い物マラソン',
         r'楽天(?:1位|ランキング1位|デイリー1位)',
-        r'[0-9]+%OFF',
-        r'[0-9]+％OFF',
-        r'★[0-9\.]+★?',
-        r'レビュー特典',
-        r'公式(?:店)?',
-        r'医薬部外品',
-        r'正規品'
+        r'[0-9]+%OFF', r'[0-9]+％OFF', r'★[0-9\.]+★?',
+        r'レビュー(?:特典|プレゼント|高評価)', r'公式(?:店|ショップ)?',
+        r'医薬部外品', r'正規品', r'日本製', r'国内製造', r'男女兼用', r'レディース',
+        r'ギフト', r'プレゼント', r'贈り物', r'父の日', r'母の日', r'バレンタイン',
+        r'お試し', r'サンプル', r'詰替(?:え|用)?', r'大容量', r'限定',
+        r'SPF\s*[0-9]+\+*', r'PA\s*\++',
+        r'ウォータープルーフ', r'ノンケミカル', r'ノンシリコン', r'オーガニック'
     ]
     for pat in noise_patterns:
-        cleaned = re.sub(pat, '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(pat, ' ', cleaned, flags=re.IGNORECASE)
         
-    words = [w.strip() for w in cleaned.split() if w.strip()]
-    seen = set()
-    cleaned_words = []
-    for w in words:
-        if w not in seen and len(w) > 1:
-            seen.add(w)
-            cleaned_words.append(w)
-        if len(' '.join(cleaned_words)) >= 40:
-            break
-            
-    res = ' '.join(cleaned_words).strip()
-    return res if res else (words[0] if words else name[:30])
-
-
-def clean_rakuten_item_caption(caption):
-    """楽天のitemCaptionから類似商品羅列、ハッシュタグ、価格表、広告ノイズを除去"""
-    if not caption:
-        return "男の身だしなみ・清潔感を整える注目アイテム。"
+    cleaned = re.sub(r'[＼／★◆■●▼▲〜～!！?？|｜:：;；+＋_＿]+', ' ', cleaned)
     
-    # 類似商品・関連商品の案内文とそれに続く商品名・価格の羅列を全削除
-    text = re.sub(r'類似商品はこちら[^\n。]*[。\n]?', '', caption)
+    # 一般的な宣伝・検索用キーワードの除外
+    banned_words = {
+        "メンズ", "男性", "男", "用", "向け", "おすすめ", "人気", "スキンケア", "コスメ",
+        "セット", "対策", "予防", "ケア", "グッズ", "アイテム", "市販", "ランキング",
+        "メール便", "定形外", "ネコポス", "小型宅配便", "宅配便", "あす楽対応", "ゴルフ",
+        "用に", "水に強い", "自然な肌色", "テカリ防止", "日焼止めクリーム", "日焼け止め"
+    }
+    
+    words = []
+    for w in cleaned.split():
+        w_clean = w.strip()
+        if len(w_clean) <= 1:
+            continue
+        if w_clean in banned_words:
+            continue
+        # 数字＋単位（100g, 150ml, 30gなど）や型番（TLU-001など）を除外
+        if re.match(r'^[0-9]+(?:g|ml|mL|本|個|枚|回分|点|点セット)$', w_clean, re.IGNORECASE):
+            continue
+        if re.match(r'^[A-Z0-9\-]{4,}$', w_clean):
+            continue
+        words.append(w_clean)
+        
+    # ブランド名＋商品名のスッキリした組み合わせを構成
+    res = " ".join(words[:4]).strip()
+    if len(res) > 22:
+        res = res[:22].strip()
+    return res if res else "注目ケアアイテム"
+
+
+def clean_rakuten_item_caption(caption, brand="", product=""):
+    """
+    itemCaptionから全成分・製造販売元・モニター注意書き・宣伝文句を徹底排除し、
+    商品の使用感や特徴のみを凝縮した自然な紹介文（60〜110文字）を抽出
+    """
+    if not caption:
+        return f"{brand}が男性のために開発した、毎日の使いやすさと確かな効果を両立する実力派ケアアイテムです。"
+    
+    text = caption
+    # 類似商品、関連商品、広告定型文の全削除
+    text = re.sub(r'類似商品はこちら[^\n。]*[。\n]?', '', text)
     text = re.sub(r'関連商品[^\n。]*[。\n]?', '', text)
     text = re.sub(r'おすすめ商品[^\n。]*[。\n]?', '', text)
-    
-    # ハッシュタグ（#韓国ヘア、#メンズケア など）の完全削除
+    text = re.sub(r'関連キーワード[：:][^\n。]*[。\n]?', '', text)
+    text = re.sub(r'お客様のお使いの(?:PC|モニター|スマートフォン|端末)[^\n。]*[。\n]?', '', text)
+    text = re.sub(r'(?:製造販売元|発売元|製造元|広告文責|輸入者|区分|TEL|問い合わせ)[：:][^\n。]*[。\n]?', '', text)
+    text = re.sub(r'【?全成分】?[：:][^\n。]*[。\n]?', '', text)
     text = re.sub(r'#[^\s　#]+', '', text)
-    
-    # 価格付きの商品羅列（〜〜円、〜〜,〜〜〜円）のパターンを削除
     text = re.sub(r'[^\s　、。]+[0-9,]+円[、。]?', '', text)
-    
-    # 記号マーク付きの売り文句（■Point、★幅広設計 など）
-    text = re.sub(r'[■★◆●▼▲]+[^\s　]+', '', text)
-    text = re.sub(r'[■★◆●▼▲・~〜※]+', ' ', text)
-    
-    # URLやリンク風テキストの除去
     text = re.sub(r'https?://[^\s]+', '', text)
-    
-    # 余分な空白・改行の整形
+    text = re.sub(r'[■★◆●▼▲・~〜※【】『』［］\[\]]+', ' ', text)
+    text = re.sub(r'[-=─━―]{3,}', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     
-    # 句点（。）で分割し、完全な文のみを結合して途切れのない文章を生成
-    sentences = re.split(r'(?<=。)', text)
-    valid_sentences = []
+    sentences = re.split(r'[。\n]+', text)
+    meaningful_sentences = []
     total_len = 0
+    
+    ng_sentence_keywords = [
+        "株式会社", "サイバール", "クイックレスポンス", "電話番号", "モニター", "若干の違い",
+        "クロスポリマー", "ポリマー", "ジメチコン", "エチルヘキシル", "エラスチン", "全成分",
+        "メール便", "送料無料", "即日発送", "あす楽", "返品", "交換", "特定商取引",
+        "ギフトラッピング", "プレゼント包装", "定形外"
+    ]
+    
     for s in sentences:
         s_clean = s.strip()
-        if not s_clean:
+        if len(s_clean) < 8 or len(s_clean) > 85:
             continue
-        # 意味のある文（5文字以上）
-        if len(s_clean) >= 5:
-            # もし末尾が句点で終わっていなければ補完
-            if not s_clean.endswith(('。', '！', '!')):
-                s_clean += '。'
-            valid_sentences.append(s_clean)
-            total_len += len(s_clean)
-            if total_len >= 140:
-                break
-                
-    if valid_sentences:
-        return "".join(valid_sentences)
+        if any(kw in s_clean for kw in ng_sentence_keywords):
+            continue
+        if not s_clean.endswith(('。', '！', '!')):
+            s_clean += '。'
+        meaningful_sentences.append(s_clean)
+        total_len += len(s_clean)
+        if total_len >= 130:
+            break
+            
+    if meaningful_sentences:
+        return "".join(meaningful_sentences)
 
-    # 最低限の意味のあるテキストが残らなかった場合の自然なフォールバック
-    return "使い心地と効果にこだわったメンズ専用の身だしなみアイテムです。"
+    return f"{brand}が男性のために開発した、毎日の使いやすさと確かな効果を両立する実力派ケアアイテムです。"
 
 
-
-def extract_brand_and_product(clean_name):
-    """商品名からブランド名と商品名を綺麗に分離"""
-    name = re.sub(r'^[＼／★\s]+|[＼／★\s]+$', '', clean_name).strip()
-    words = name.split()
-    if not words:
-        return "注目ブランド", clean_name
+def extract_brand_and_product(clean_name, raw_name=""):
+    """
+    商品名から既知のブランドと商品名をスマートに分離。
+    「日焼け止め」等のカテゴリ一般名がブランド名として誤認されるのを完全に防止。
+    """
+    target_str = f"{raw_name} {clean_name}" if raw_name else clean_name
     
-    first = words[0]
-    if len(words) >= 2:
-        # 2単語で1つのブランド名になるパターン（マンダム ギャツビー等）
-        if words[1] in ['ギャツビー', 'オム', 'メン', 'MEN', 'HOMME', 'ラボ', 'モイスチャー', 'ケア'] and len(first) <= 7:
-            brand = f"{first} {words[1]}"
-            product = " ".join(words[2:]) or brand
-        else:
-            brand = first
-            product = " ".join(words[1:]) or brand
+    # 1. 既知ブランドの探索
+    found_brand = None
+    for en, ja in KNOWN_MENS_BRANDS:
+        pattern = re.compile(rf'(?:{re.escape(en)}|{re.escape(ja)})', re.IGNORECASE)
+        if pattern.search(target_str):
+            found_brand = ja if ja else en
+            break
+            
+    # 2. ブランドが見つかった場合、商品名側からブランド名を除去
+    if found_brand:
+        product = clean_name
+        product = re.sub(re.escape(found_brand), '', product, flags=re.IGNORECASE).strip()
+        words = product.split()
+        product = " ".join(words[:3]) if words else "注目ケアアイテム"
+        if len(product) > 20:
+            product = product[:20].strip()
+        return found_brand, product
+        
+    # 3. 未知ブランドの場合、先頭単語をブランド候補とし、一般名詞はブランドとしない
+    words = clean_name.split()
+    if not words:
+        return "注目ブランド", "実力派アイテム"
+        
+    general_nouns = {"日焼け止め", "洗顔料", "化粧水", "乳液", "美容液", "ジェル", "クリーム", "ワックス", "バーム", "オイル", "シャンプー", "シェーバー"}
+    if words[0] in general_nouns:
+        brand = "厳選ブランド"
+        product = " ".join(words[:3])
     else:
-        brand = first
-        product = name
+        brand = words[0]
+        product = " ".join(words[1:4]) or brand
+        
+    if len(product) > 20:
+        product = product[:20].strip()
     return brand, product
 
 def get_rakuten_affiliate_url(item, affiliate_id):
@@ -454,8 +540,12 @@ def fetch_rakuten_mens_items(count=5):
         if price < 300: # 安価すぎるサンプル等を除外
             continue
 
-        it["cleanName"] = clean_rakuten_item_name(name)
-        it["cleanCaption"] = clean_rakuten_item_caption(it.get("itemCaption", ""))
+        clean_n = clean_rakuten_item_name(name)
+        brand, product = extract_brand_and_product(clean_n, raw_name=name)
+        it["cleanName"] = clean_n
+        it["brand"] = brand
+        it["product"] = product
+        it["cleanCaption"] = clean_rakuten_item_caption(it.get("itemCaption", ""), brand=brand, product=product)
         it["itemCaption"] = it["cleanCaption"]
         it["affUrl"] = get_rakuten_affiliate_url(it, affiliate_id)
         it["imgUrl"] = extract_image_url(it)
@@ -487,8 +577,12 @@ def fetch_rakuten_mens_items(count=5):
                         exp_name = exp_it.get("itemName", "")
                         if any(ng in exp_name for ng in ng_words) or exp_it.get("itemPrice", 0) < 300:
                             continue
-                        exp_it["cleanName"] = clean_rakuten_item_name(exp_name)
-                        exp_it["cleanCaption"] = clean_rakuten_item_caption(exp_it.get("itemCaption", ""))
+                        exp_clean = clean_rakuten_item_name(exp_name)
+                        exp_brand, exp_product = extract_brand_and_product(exp_clean, raw_name=exp_name)
+                        exp_it["cleanName"] = exp_clean
+                        exp_it["brand"] = exp_brand
+                        exp_it["product"] = exp_product
+                        exp_it["cleanCaption"] = clean_rakuten_item_caption(exp_it.get("itemCaption", ""), brand=exp_brand, product=exp_product)
                         exp_it["itemCaption"] = exp_it["cleanCaption"]
                         exp_it["affUrl"] = get_rakuten_affiliate_url(exp_it, affiliate_id)
                         exp_it["imgUrl"] = extract_image_url(exp_it)
@@ -689,17 +783,15 @@ def generate_curated_mens_article(theme_obj, items):
     item_keywords_all = []
     for idx, it in enumerate(items, 1):
         clean_name = it.get('cleanName', '')
-        brand, product = extract_brand_and_product(clean_name)
-        it['brand'] = brand
-        it['product'] = product
-        caption_snippet = clean_rakuten_item_caption(it.get('itemCaption', ''))[:160]
+        brand = it.get('brand') or "注目ブランド"
+        product = it.get('product') or clean_name
+        caption_snippet = clean_rakuten_item_caption(it.get('itemCaption', ''), brand=brand, product=product)[:120]
         items_desc_list.append(
             f"--- 【商品 {idx}】 ---\n"
             f"ブランド名: {brand}\n"
             f"商品名: {product}\n"
-            f"フル名称: {clean_name}\n"
-            f"価格: {it.get('itemPrice', '')}円\n"
-            f"特徴・概要: {caption_snippet}\n"
+            f"価格目安: {it.get('itemPrice', '')}円\n"
+            f"独自特徴・強み: {caption_snippet}\n"
             f"画像URL: {it['imgUrl']}\n"
             f"アフィリエイトURL: {it['affUrl']}\n"
         )
@@ -767,14 +859,36 @@ def generate_curated_mens_article(theme_obj, items):
     def validate_article_completeness(html_str, expected_items):
         if not html_str or len(html_str.strip()) < 1200:
             return False, f"文字数不足 ({len(html_str.strip()) if html_str else 0}文字)"
-        # 全商品の画像URLが含まれているか
-        img_missing = [it.get("imgUrl") for it in expected_items if it.get("imgUrl") and it.get("imgUrl") not in html_str]
+        
+        # 全商品の画像URLが含まれているか（クエリパラメータ違いやURL短縮も考慮して検証）
+        def check_img_present(target_url):
+            if not target_url:
+                return True
+            if target_url in html_str:
+                return True
+            base = target_url.split("?")[0]
+            return base in html_str
+
+        img_missing = [it.get("imgUrl") for it in expected_items if not check_img_present(it.get("imgUrl"))]
         if img_missing:
             return False, f"商品画像欠落 ({len(img_missing)}件未掲載)"
+            
         # 全商品のアフィリエイトURLが含まれているか
-        aff_missing = [it.get("affUrl") for it in expected_items if it.get("affUrl") and it.get("affUrl") not in html_str]
+        def check_aff_present(target_url):
+            if not target_url:
+                return True
+            if target_url in html_str:
+                return True
+            if "?" in target_url:
+                base = target_url.split("?")[0]
+                if base in html_str:
+                    return True
+            return False
+
+        aff_missing = [it.get("affUrl") for it in expected_items if not check_aff_present(it.get("affUrl"))]
         if aff_missing:
             return False, f"アフィリエイトリンク欠落 ({len(aff_missing)}件未掲載)"
+            
         # 各商品紹介の見出し（h3）が商品数と同等以上あるか
         h3_count = html_str.count("<h3")
         if h3_count < len(expected_items):
