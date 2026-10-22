@@ -117,168 +117,56 @@ def safe_unescape_json_string(s):
 
 # メンズコスメ・メンズスキンケア・身だしなみ 特化検索テーマ一覧
 MENS_THEMES = [
-    # --- スキンケア・フェイスケア ---
-    {
-        "theme": "メンズオールインワンジェルおすすめ選抜",
-        "keyword": "メンズ オールインワン ジェル",
-        "title_template": "{month}月最新！メンズ用オールインワンジェルおすすめ{count}選【時短スキンケア・乾燥＆テカリ防止】"
-    },
-    {
-        "theme": "メンズ化粧水おすすめ選抜",
-        "keyword": "メンズ 化粧水 保湿",
-        "title_template": "{month}月おすすめ！清潔感を作るメンズ化粧水{count}選【テカリ・毛穴・乾燥対策】"
-    },
-    {
-        "theme": "メンズ洗顔料・毛穴クレンジング選抜",
-        "keyword": "メンズ 洗顔料 泡 毛穴 泥",
-        "title_template": "{month}月最新！毛穴汚れ＆アブラを落とすメンズ洗顔料おすすめ{count}選【清潔素肌へ】"
-    },
-    {
-        "theme": "メンズ美容液・シワシミエイジングケア選抜",
-        "keyword": "メンズ 美容液 ナイアシンアミド シミ",
-        "title_template": "{month}月厳選！男の肌印象を変えるメンズ美容液おすすめ{count}選【美肌＆ハリ対策】"
-    },
-    {
-        "theme": "メンズアイクリーム・目元クマ対策選抜",
-        "keyword": "メンズ アイクリーム 目元 クマ たるみ",
-        "title_template": "{month}月最新！疲れた目元・クマをすっきり整えるメンズアイクリーム{count}選"
-    },
-    {
-        "theme": "メンズシートマスク・集中保湿パック選抜",
-        "keyword": "メンズ フェイスパック シートマスク 保湿",
-        "title_template": "{month}月厳選！週1の集中ケアで透明感をつくるメンズフェイスマスク{count}選"
-    },
-    {
-        "theme": "メンズリップクリーム・唇ケア選抜",
-        "keyword": "メンズ リップクリーム 色つき 保湿 荒れ",
-        "title_template": "{month}月おすすめ！血色感と潤いを保つメンズリップ{count}選【荒れ防止・身だしなみ】"
-    },
-    # --- ヘアケア・頭皮・育毛・抜け毛対策 ---
-    {
-        "theme": "メンズ育毛剤・発毛促進スカルプエッセンス選抜",
-        "keyword": "メンズ 育毛剤 薬用 抜け毛 育毛トニック",
-        "title_template": "{month}月最新！将来の髪を守るメンズ育毛剤・スカルプローションおすすめ{count}選【薄毛・抜け毛予防】"
-    },
-    {
-        "theme": "メンズスカルプシャンプー・頭皮環境改善選抜",
-        "keyword": "メンズ スカルプシャンプー 薬用 フケ かゆみ",
-        "title_template": "{month}月厳選！頭皮のベタつき＆フケ・ニオイを防ぐメンズスカルプシャンプー{count}選"
-    },
-    {
-        "theme": "メンズ頭皮用トリートメント・スカルプコンディショナー選抜",
-        "keyword": "メンズ スカルプトリートメント 頭皮ケア",
-        "title_template": "{month}月おすすめ！髪にハリコシを与えるメンズ頭皮トリートメント{count}選"
-    },
-    {
-        "theme": "メンズ電動頭皮ブラシ・スカルプマッサージャー選抜",
-        "keyword": "メンズ 頭皮マッサージ 電動 スカルプブラシ EMS",
-        "title_template": "{month}月最新！自宅で極上ヘッドスパ！メンズ頭皮マッサージャー・電動ブラシ{count}選"
-    },
-    # --- ヘアカラー・白髪染め・ヘアマニキュア ---
-    {
-        "theme": "メンズ白髪染め・白髪用ヘアマニキュア選抜",
-        "keyword": "メンズ 白髪染め 簡単 トリートメント",
-        "title_template": "{month}月最新！自宅で自然に若々しく染まるメンズ白髪染めおすすめ{count}選"
-    },
-    {
-        "theme": "メンズ白髪隠し・部分染めスティック選抜",
-        "keyword": "メンズ 白髪隠し スティック 部分染め",
-        "title_template": "{month}月厳選！出かける直前にサッと隠せるメンズ白髪隠しおすすめ{count}選"
-    },
-    {
-        "theme": "メンズカラーワックス・シルバーアッシュヘア選抜",
-        "keyword": "メンズ カラーワックス シルバーアッシュ 一日染め",
-        "title_template": "{month}月おすすめ！休日のイメチェンに！メンズカラーワックス・1日毛染め{count}選"
-    },
-    # --- スタイリング・ヘアセット ---
-    {
-        "theme": "メンズヘアワックス・ハード＆マット選抜",
-        "keyword": "メンズ ヘアワックス ハード マット 束感",
-        "title_template": "{month}月最新！一日中崩れないメンズヘアワックスおすすめ{count}選【束感・キープ力抜群】"
-    },
-    {
-        "theme": "メンズポマード・グリース・バーバースタイル選抜",
-        "keyword": "メンズ ポマード グリース 水性 バーバー",
-        "title_template": "{month}月厳選！艶とホールド力で魅せるメンズポマード・グリース{count}選【大人バーバースタイル】"
-    },
-    {
-        "theme": "メンズヘアバーム・ヘアオイル・ナチュラルセット選抜",
-        "keyword": "メンズ ヘアバーム ヘアオイル センターパート",
-        "title_template": "{month}月最新！センターパート＆ナチュラルヘアに映えるメンズヘアバーム・オイル{count}選"
-    },
-    {
-        "theme": "メンズヘアスプレー・超強力キープ選抜",
-        "keyword": "メンズ ヘアスプレー ハード キープ 崩れない",
-        "title_template": "{month}月おすすめ！湿気や風に負けないメンズヘアスプレー{count}選【強力キープ】"
-    },
-    # --- メイク・肌補正・UV ---
-    {
-        "theme": "メンズBBクリーム・肌補正ファンデーション選抜",
-        "keyword": "メンズ BBクリーム ナチュラル ファンデーション",
-        "title_template": "{month}月最新！バレずに好印象を作るメンズBBクリームおすすめ{count}選【青髭・毛穴・クマ隠し】"
-    },
-    {
-        "theme": "メンズコンシーラー・ピンポイント青髭＆ニキビ隠し選抜",
-        "keyword": "メンズ コンシーラー ニキビ跡 青髭 クマ",
-        "title_template": "{month}月厳選！肌トラブルを瞬時に隠すメンズコンシーラーおすすめ{count}選"
-    },
-    {
-        "theme": "メンズ日焼け止め・UVケア選抜",
-        "keyword": "メンズ 日焼け止め UV 白浮きしない ベタつかない",
-        "title_template": "{month}月最新！白浮きしないメンズ日焼け止めおすすめ{count}選【紫外線＆テカリ防止UV】"
-    },
-    {
-        "theme": "メンズ皮脂テカリ防止パウダー・あぶらとり選抜",
-        "keyword": "メンズ フェイスパウダー テカリ防止 ノーセバム",
-        "title_template": "{month}月おすすめ！サラサラ肌が夕方まで続くメンズフェイスパウダー{count}選"
-    },
-    # --- 身だしなみ・シェービング・眉・ムダ毛ケア ---
-    {
-        "theme": "メンズ電気シェーバー・深剃り髭剃り選抜",
-        "keyword": "メンズ 電気シェーバー 充電式 深剃り",
-        "title_template": "{month}月最新！肌に優しく深剃りできるメンズ電気シェーバーおすすめ{count}選"
-    },
-    {
-        "theme": "メンズ眉毛セット・アイブロウツール選抜",
-        "keyword": "メンズ 眉毛セット シェーバー ハサミ コーム",
-        "title_template": "{month}月厳選！第一印象を劇的に変えるメンズ眉毛ケア・シェーバーセット{count}選"
-    },
-    {
-        "theme": "メンズ鼻毛カッター・身だしなみエチケット選抜",
-        "keyword": "メンズ 鼻毛カッター 電動 水洗い",
-        "title_template": "{month}月おすすめ！清潔感の基本！痛くない＆安全なメンズ鼻毛カッター{count}選"
-    },
-    {
-        "theme": "メンズボディシェーバー・除毛すね毛ケア選抜",
-        "keyword": "メンズ ボディシェーバー ムダ毛 除毛 すね毛",
-        "title_template": "{month}月最新！清潔感UP！メンズボディシェーバー＆ムダ毛処理アイテム{count}選"
-    },
-    {
-        "theme": "メンズ除毛クリーム・簡単すべすべ肌選抜",
-        "keyword": "メンズ 除毛クリーム 薬用 大容量",
-        "title_template": "{month}月厳選！塗って流すだけ！男の剛毛もしっかり除毛できるメンズ除毛クリーム{count}選"
-    },
-    # --- 体臭・ニオイ・エチケット・フレグランス ---
-    {
-        "theme": "メンズ薬用ボディソープ・加齢臭＆体臭ケア選抜",
-        "keyword": "メンズ 薬用ボディソープ 汗 臭い 加齢臭 デオドラント",
-        "title_template": "{month}月おすすめ！汗・男臭・加齢臭を元から洗い流すメンズボディソープ{count}選"
-    },
-    {
-        "theme": "メンズ制汗剤・ロールオン・デオドラント選抜",
-        "keyword": "メンズ デオドラント ロールオン 制汗剤 ワキガ 汗止め",
-        "title_template": "{month}月最新！男のワキ汗・ニオイを1日ブロックするメンズ制汗剤・デオドラント{count}選"
-    },
-    {
-        "theme": "メンズ香水・練り香水・好印象フレグランス選抜",
-        "keyword": "メンズ 香水 練り香水 シトラス ソープ 清潔感",
-        "title_template": "{month}月厳選！女子ウケ＆ビジネスで好印象なメンズ香水・フレグランス{count}選"
-    },
-    {
-        "theme": "メンズハンドクリーム・手元ケア選抜",
-        "keyword": "メンズ ハンドクリーム ベタつかない 保湿",
-        "title_template": "{month}月おすすめ！名刺交換も自信！ベタつかないメンズハンドクリーム{count}選"
-    }
+    {"theme": "メンズ洗顔料・毛穴汚れ＆イチゴ鼻集中ケア", "keyword": "メンズ 洗顔 毛穴 泥 クレイ 炭 黒ずみ", "problem": "毛穴の黒ずみ・アブラ・角栓"},
+    {"theme": "メンズ酵素洗顔パウダー・角質オフケア", "keyword": "メンズ 酵素洗顔 パウダー 個包装", "problem": "古い角質・肌のゴワつき・くすみ"},
+    {"theme": "メンズ高保湿化粧水・乾燥肌＆インナードライ対策", "keyword": "メンズ 化粧水 高保湿 セラミド ヒアルロン酸", "problem": "カサつき・粉ふき・インナードライ"},
+    {"theme": "メンズ皮脂テカリ防止化粧水・オイルコントロール", "keyword": "メンズ 化粧水 テカリ防止 皮脂 吸着 さっぱり", "problem": "夕方の顔のテカリ・ギトギト脂・化粧崩れ"},
+    {"theme": "メンズ薬用美白・ビタミンCシミ対策美容液", "keyword": "メンズ 美容液 ビタミンC誘導体 シミ そばかす メラノ", "problem": "紫外線ダメージ・シミ・くすみ・色ムラ"},
+    {"theme": "メンズエイジングケア美容液・レチノール＆ナイアシンアミド", "keyword": "メンズ 美容液 レチノール ナイアシンアミド ハリ シワ", "problem": "小ジワ・肌のたるみ・年齢サイン・ハリ不足"},
+    {"theme": "メンズオールインワンジェル・朝10秒の時短スキンケア", "keyword": "メンズ オールインワン ジェル ポンプ 時短", "problem": "朝のスキンケアの手間・面倒くささ・乾燥"},
+    {"theme": "メンズ乳液・水分油分バランスクリーム", "keyword": "メンズ 乳液 バリア機能 うるおい ベタつかない", "problem": "化粧水後の乾燥・肌バリアの低下・ゴワつき"},
+    {"theme": "メンズアイクリーム・目の下のクマ＆疲労感ケア", "keyword": "メンズ アイクリーム クマ たるみ 目元 アイクレマ", "problem": "青グマ・茶グマ・目元の老け見え・どんより顔"},
+    {"theme": "メンズシートマスク・大事な日の前夜の集中パック", "keyword": "メンズ フェイスパック シートマスク CICA 保湿 個包装", "problem": "大事な商談・デート前の肌コンディション調整"},
+    {"theme": "メンズリップケア・荒れ知らずのうるおい高保湿リップ", "keyword": "メンズ リップクリーム 高保湿 セラミド 無香料 荒れ防止", "problem": "冬の唇の皮むけ・ガサガサ・血色の悪さ"},
+    {"theme": "メンズ色付きリップ・血色感UPで健康的な口元に", "keyword": "メンズ リップ 色付き 血色 ナチュラル ナチュラルレッド", "problem": "唇の血色の悪さ・不健康に見える顔色"},
+    {"theme": "メンズCICAシカクリーム・ニキビ肌荒れ鎮静ケア", "keyword": "メンズ CICA シカクリーム 肌荒れ ニキビ 赤み", "problem": "赤ら顔・繰り返すニキビ・カミソリ負けの赤み"},
+    {"theme": "メンズピールオフパック・角栓ごっそり毛穴パック", "keyword": "メンズ ピールオフパック 鼻パック 毛穴角栓 剥がすパック", "problem": "頑固な小鼻の角栓・毛穴のザラつき"},
+    {"theme": "メンズ導入美容液・ブースターローション", "keyword": "メンズ 導入美容液 ブースター 浸透 先行美容液", "problem": "スキンケアが肌に入っていかない・浸透力の低下"},
+    {"theme": "メンズBBクリーム・青ヒゲ＆毛穴バレずにカバー", "keyword": "メンズ BBクリーム ナチュラル ベージュ 青髭 毛穴隠し", "problem": "夕方の青ヒゲ・毛穴の凹凸・クマ・赤み"},
+    {"theme": "メンズCCクリーム・自然なトーンアップ＆透明感", "keyword": "メンズ CCクリーム トーンアップ 素肌感 色ムラ補正", "problem": "顔全体のくすみ・お疲れ顔・暗い肌トーン"},
+    {"theme": "メンズコンシーラー・ピンポイントニキビ跡・シミ隠し", "keyword": "メンズ コンシーラー スティック クマ ニキビ跡 部分隠し", "problem": "目立つ赤ニキビ跡・ピンポイントの濃いシミ"},
+    {"theme": "メンズフェイスパウダー・夕方までサラサラ陶器肌", "keyword": "メンズ フェイスパウダー 無色 テカリ防止 ノーセバム サラサラ", "problem": "Tゾーンのテカリ・マスク蒸れ・メイク崩れ"},
+    {"theme": "メンズ日焼け止めジェル・白浮きゼロ＆ベタつきなしUV", "keyword": "メンズ 日焼け止め ウォータープルーフ SPF50 さっぱり ジェル", "problem": "紫外線による日焼け・シミ予備軍・白浮き"},
+    {"theme": "メンズUVスティック・手を汚さずサッと塗り直せる日焼け止め", "keyword": "メンズ UVスティック サンスティック 直塗り 手が汚れない", "problem": "外出先での日焼け止めの塗り直し・ベタつき"},
+    {"theme": "メンズクレンジングバーム・毛穴黒ずみ＆BBクリーム完全オフ", "keyword": "メンズ クレンジング バーム 毛穴 メイク落とし 毛穴汚れ", "problem": "BBクリームの落とし残し・毛穴に詰まった汚れ"},
+    {"theme": "メンズアイブロウペンシル・自然な美眉で第一印象激変", "keyword": "メンズ アイブロウ ペンシル 眉墨 落ちにくい グレー ブラウン", "problem": "薄い眉毛・まばら眉・ぼやけた目元の印象"},
+    {"theme": "メンズ眉毛スタイリングセット・ハサミ＆コーム＆毛抜き", "keyword": "メンズ 眉毛セット ハサミ コーム 毛抜き 眉カット", "problem": "ボサボサ眉毛・自己流手入れの失敗"},
+    {"theme": "メンズ電気シェーバー・肌に優しく夕方までツルツルの深剃り", "keyword": "メンズ 電気シェーバー 往復式 回転式 深剃り お風呂剃り", "problem": "カミソリ負け・ヒリヒリ感・夕方のジョリジョリ青ヒゲ"},
+    {"theme": "メンズシェービングジェル・濃密刃滑りでカミソリ負け回避", "keyword": "メンズ シェービングジェル 薬用 透明 ヒゲ剃り ひきしめ", "problem": "ヒゲ剃り時の肌荒れ・逆剃りの痛み・出血"},
+    {"theme": "メンズアフターシェーブローション・ヒゲ剃り後の肌鎮静", "keyword": "メンズ アフターシェーブローション 抑毛 保湿 鎮静 引き締め", "problem": "ヒゲ剃り直後のヒリつき・乾燥・赤み"},
+    {"theme": "メンズ鼻毛カッター・痛くない＆安全設計の身だしなみ必需品", "keyword": "メンズ 鼻毛カッター 電動 水洗い 安全カッター", "problem": "不意に飛び出る鼻毛・商談時の清潔感リスク"},
+    {"theme": "メンズ薬用スカルプシャンプー・頭皮の脂＆フケかゆみ根絶", "keyword": "メンズ 薬用スカルプシャンプー アミノ酸系 フケ かゆみ 頭皮臭", "problem": "頭皮のベタつき・夕方の頭皮のニオイ・フケ"},
+    {"theme": "メンズ育毛剤・抜け毛を防ぎ強いハリコシ髪を育てる", "keyword": "メンズ 育毛剤 医薬部外品 薬用 発毛促進 抜け毛予防 トニック", "problem": "抜け毛の増加・頭頂部のボリューム不足・細毛"},
+    {"theme": "メンズ電動頭皮ブラシ・自宅で本格サロン級ヘッドスパ", "keyword": "メンズ 頭皮マッサージ 電動 スカルプブラシ EMS 完全防水", "problem": "頭皮のコリ・目の疲れ・血行不良による薄毛不安"},
+    {"theme": "メンズ頭皮用炭酸スプレー・パチパチ爽快スカルプトニック", "keyword": "メンズ 炭酸 スカルプスプレー ジェット 頭皮冷却 リフレッシュ", "problem": "夏の頭皮の蒸れ・汗の不快感・仕事中のリフレッシュ"},
+    {"theme": "メンズマットヘアワックス・ツヤなし自然な束感＆超キープ", "keyword": "メンズ ヘアワックス マット ドライ クレイ 束感 崩れない", "problem": "ペタッと潰れる軟毛・ワックス特有のギトギト感"},
+    {"theme": "メンズ水性ポマード＆グリース・大人の色気と艶バーバースタイル", "keyword": "メンズ ポマード グリース 水性 バーバー 艶 クラシック 水で流せる", "problem": "バーバースタイルの崩れ・シャンプーで落ちにくい油分"},
+    {"theme": "メンズヘアバーム・センターパート＆毛流れナチュラルセット", "keyword": "メンズ ヘアバーム オーガニック ナチュラル センターパート 濡れ髪", "problem": "作り込みすぎない自然な毛流れ・アホ毛の広がり"},
+    {"theme": "メンズヘアオイル・パサつき補修＆自然なツヤ出し", "keyword": "メンズ ヘアオイル ダメージ補修 サラサラ 洗い流さないトリートメント", "problem": "カラー・パーマによる髪の傷み・乾燥毛のパサつき"},
+    {"theme": "メンズ超強力ヘアスプレー・強風や湿気でも1日崩さない", "keyword": "メンズ ヘアスプレー ハード 超強力キープ 雨 湿気 ロック", "problem": "雨の日の湿気崩れ・自転車や風によるスタイリング崩壊"},
+    {"theme": "メンズ白髪隠しスティック・出かける直前にサッとカバー", "keyword": "メンズ 白髪隠し スティック 部分染め マスカラ シャンプーで落ちる", "problem": "生え際やもみあげのチラ見え白髪・急な外出"},
+    {"theme": "メンズ白髪染めトリートメント・毎日の入浴で自然に若返り", "keyword": "メンズ 白髪染め トリートメント 徐々に染まる 頭皮に優しい", "problem": "美容院に行く時間がない・急に真っ黒になる不自然さ"},
+    {"theme": "メンズボディシェーバー・VIO＆すね毛を清潔に整える", "keyword": "メンズ ボディシェーバー ムダ毛処理 VIO対応 すね毛 防水", "problem": "短パン時の濃すぎるすね毛・蒸れやすいアンダーヘア"},
+    {"theme": "メンズ除毛クリーム・最短5分で剛毛ごっそりツルすべ肌", "keyword": "メンズ 除毛クリーム 薬用 大容量 低刺激 剛毛", "problem": "カミソリによる肌荒れ・毛抜きで抜く激痛"},
+    {"theme": "メンズ薬用デオドラントボディソープ・加齢臭＆汗臭を元から断つ", "keyword": "メンズ 薬用ボディソープ 加齢臭 体臭 殺菌 デオドラント 柿渋", "problem": "ミドル脂臭・加齢臭・運動後の男臭"},
+    {"theme": "メンズ高密着ワキ用ロールオン・汗ジミ＆ニオイを1日完全ブロック", "keyword": "メンズ デオドラント ロールオン 制汗剤 ワキガ 汗止め アルミニウムフリー", "problem": "白シャツの黄ばみ・ワキ汗ジミ・ワキガ臭"},
+    {"theme": "メンズ足用消臭クリーム・長時間の革靴でも靴を脱げる清潔足へ", "keyword": "メンズ 足 消臭クリーム 薬用 殺菌 防臭 革靴 ムレ", "problem": "居酒屋のお座敷で靴を脱ぐ恐怖・足の強烈なニオイ"},
+    {"theme": "メンズ練り香水・ふんわり香ってビジネスでも好印象なソリッドパフューム", "keyword": "メンズ 練り香水 ソリッドパフューム シトラス サボン 清潔感 つけすぎない", "problem": "香水のつけすぎによるスメハラ・きつい人工香料"},
+    {"theme": "メンズ高保湿ハンドクリーム・名刺交換で魅せるベタつかない手元", "keyword": "メンズ ハンドクリーム ベタつかない さらさら スマホ操作 保湿 手荒れ", "problem": "カサカサの手・ささくれ・スマホ画面への指紋ベタつき"},
+    {"theme": "メンズ舌ブラシ＆口臭予防ジェル・至近距離の会話も怖くない", "keyword": "メンズ 口臭予防 舌ブラシ 舌ジェル 薬用 オーラルケア 息スッキリ", "problem": "朝の口臭・タバコやコーヒー後の口内ネバつき"},
+    {"theme": "メンズ爪切り＆ガラス製爪やすり・指先の清潔感で差をつける", "keyword": "メンズ 爪切り 高級 ガラス 爪やすり ネイルケア 清潔感", "problem": "ガタガタの爪・伸びた爪・名刺交換時の指先の不潔感"},
+    {"theme": "メンズファブリックスプレー・スーツのタバコ・焼肉臭を瞬時に消臭", "keyword": "メンズ ファブリックスプレー 衣類消臭 除菌 スーツ 香水代わり", "problem": "洗えないスーツに染み付いたタバコ臭・飲み会の油のニオイ"},
+    {"theme": "メンズシャワージェル・欧米プレミアムなバスタイム", "keyword": "メンズ シャワージェル 高級 香り ボディウォッシュ", "problem": "マンネリ化したバスタイム・安っぽい石鹸の匂い"},
 ]
 
 
@@ -500,11 +388,15 @@ def fetch_rakuten_mens_items(count=5):
     if not app_id or not access_key:
         raise ValueError("RAKUTEN_APP_ID and RAKUTEN_ACCESS_KEY must be set in environment variables.")
 
-    # 直近選ばれたテーマを避けて選定（同一テーマの過剰連続投稿を防止）
-    recent_themes = load_recent_themes(limit=12)
+    # 直近選ばれたテーマを避けて選定（最低25件の過去テーマと重複しないようにし、テーマの循環ローテーションを保証）
+    recent_themes = load_recent_themes(limit=25)
     available_themes = [t for t in MENS_THEMES if t["theme"] not in recent_themes]
     if not available_themes:
-        available_themes = MENS_THEMES
+        # すべて一巡した場合は直近10件のみを除外して再ローテーション
+        recent_themes_short = load_recent_themes(limit=10)
+        available_themes = [t for t in MENS_THEMES if t["theme"] not in recent_themes_short]
+        if not available_themes:
+            available_themes = MENS_THEMES
     theme_obj = random.choice(available_themes)
     keyword = theme_obj["keyword"]
     print(f"Selected Theme: {theme_obj['theme']} (Keyword: {keyword})")
@@ -614,21 +506,22 @@ def fetch_rakuten_mens_items(count=5):
     return theme_obj, selected_items
 
 
-def call_llm(prompt, system_message, temperature=0.7, max_tokens=4500):
+def call_llm(prompt, system_message, temperature=0.7, max_tokens=8192):
     """
     ユーザー規則に基づく最新Geminiモデルローテーション ＆ Groqフォールバック
     Gemini 1.5系は完全廃止済みのため使用禁止。
     ローテーション順:
-    gemini-3.1-flash-lite -> gemini-3.5-flash -> gemini-2.5-flash -> gemini-3.7-flash -> gemini-3.6-flash
+    gemini-2.5-flash -> gemini-3.1-flash-lite -> gemini-3.5-flash -> gemini-3.7-flash -> gemini-3.6-flash -> gemini-2.0-flash
     """
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         gemini_rotation = [
+            "gemini-2.5-flash",
             "gemini-3.1-flash-lite",
             "gemini-3.5-flash",
-            "gemini-2.5-flash",
             "gemini-3.7-flash",
-            "gemini-3.6-flash"
+            "gemini-3.6-flash",
+            "gemini-2.0-flash"
         ]
         for model_name in gemini_rotation:
             try:
@@ -638,7 +531,7 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=4500):
                     "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}
                 }
 
-                res = requests.post(api_url, json=payload, timeout=45)
+                res = requests.post(api_url, json=payload, timeout=50)
                 if res.status_code == 200:
                     data = res.json()
                     candidates = data.get("candidates", [])
@@ -660,9 +553,11 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=4500):
     # Groq API フォールバック
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
-        for model_name in ["llama-3.1-8b-instant"]:
+        for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
             try:
                 headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+                # Groqの最大トークン数はモデルによって異なるため上限を安全に設定
+                groq_tokens = min(max_tokens, 6000 if "70b" in model_name else 4096)
                 payload = {
                     "model": model_name,
                     "messages": [
@@ -670,14 +565,16 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=4500):
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": temperature,
-                    "max_tokens": max_tokens
+                    "max_tokens": groq_tokens
                 }
-                res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=40)
+                res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=45)
                 if res.status_code == 200:
                     text = res.json()["choices"][0]["message"]["content"].strip()
                     if len(text) > 50:
                         print(f"Generated successfully with Groq model: {model_name}")
                         return text
+                else:
+                    print(f"Groq API ({model_name}) error {res.status_code}: {res.text[:120]}")
             except Exception as e:
                 print(f"Groq API ({model_name}) exception: {e}")
 
@@ -809,52 +706,56 @@ def generate_curated_mens_article(theme_obj, items):
         item_keywords_all.append(product)
     items_context = "\n".join(items_desc_list)
 
-    # 過去タイトルの一覧（直近15件）をプロンプトに含めて重複を禁止
-    past_titles = load_posted_titles()[-15:]
+    # 過去タイトルの一覧（直近30件）をプロンプトに含めて重複を禁止
+    past_titles = load_posted_titles()[-30:]
     past_titles_str = "\n".join([f"- {t}" for t in past_titles]) if past_titles else "（過去の重複なし）"
 
+    target_problem = theme_obj.get("problem", "男の身だしなみの悩み")
+
     system_message = (
-        "あなたはメンズ美容・身だしなみ専門の敏腕エディターです。"
-        "男性がリアルに抱える切実な悩み（テカリ、毛穴の黒ずみ、青ヒゲ、乾燥、頭皮のニオイ、清潔感の欠如など）を解決する、具体的で魅力的な特集記事を執筆します。"
-        "【絶対禁止ルール】:\n"
-        "1. 『注目1』『注目2』や『いかがでしたでしょうか』『〜ですね！』といった単調なAI臭い定型文・使い回しテンプレートは一切使用禁止。\n"
-        "2. 過去のタイトル構文（『◯月最新！男を上げる〜』『◯月おすすめ！失敗しない〜』）の模倣・使い回しは完全禁止。\n"
-        "3. 出力は指定のJSONフォーマットのみ（Markdownコードブロックなし、余計な前置き・解説なし）。"
+        "あなたは実力派メンズ美容ジャーナリスト・編集長です。"
+        "Google検索・SEOで高く評価され、読者の男性が『まさに自分の悩みの答えがここにある』と唸るような、専門性と熱量の高い一次情報風の特集記事を執筆します。"
+        "【絶対厳守の独自性ルール】:\n"
+        "1. 『男の清潔感を高めるギア』『男を上げる』『失敗しない』『いかがでしたでしょうか』『〜ですね！』などの安易な陳腐フレーズ・テンプレ構文は完全使用禁止。\n"
+        "2. 記事タイトルは、読者の抱える具体的な痛み・悩み（例: 夕方のテカリ、青ヒゲ、頭皮臭、加齢臭など）や、選抜商品の持つ決定的な価値に切り込むこと。\n"
+        "3. 過去のタイトル構文の模倣は完全禁止。\n"
+        "4. 各商品の紹介文は、成分や処方、テクスチャー、使い心地の違いに踏み込み、5商品すべてが全く異なる個性として引き立つように具体的に書き分けること。"
     )
 
-    prompt = f"""以下は楽天市場から厳選したメンズコスメ・身だしなみアイテム{count}点のデータです。
-今月（{current_month}月）の男性読者に向けて、雑誌の特集ページのような魅力的な選抜比較記事を作成してください。
+    prompt = f"""以下は楽天市場から選抜したメンズコスメ・身だしなみアイテム{count}点の詳細データです。
+今回のテーマ【{theme_obj['theme']}】（解消する悩み：{target_problem}）にフォーカスし、オリジナリティ溢れる高品質な特集レビュー記事を執筆してください。
 
 【特集テーマ】: {theme_obj['theme']}
+【ターゲットの切実な悩み】: {target_problem}
 【掲載アイテム一覧】:
 {items_context}
 
-【過去のタイトル例（これらと構文や表現が重複・酷似するものは完全禁止）】:
+【過去のタイトル一覧（これらと構文やキーワード組み合わせが酷似するものは【完全禁止】）】:
 {past_titles_str}
 
 【記事作成要件】:
 1. タイトル（title）:
-   - 過去のタイトルと被らない、今回の商品群の特徴や男性の悩みにフォーカスしたオリジナルのタイトル。
-   - 具体的な数字（{count}選など）を含め、クリックしたくなる魅力を38文字程度で表現。
+   - 過去のタイトル一覧と絶対に被らない、新鮮で引きの強いオリジナルタイトル（32〜42文字程度）。
+   - 「男の清潔感を高めるギア」「失敗しない〜」などの使い古されたテンプレ語句は使わず、読者の悩みや商品の強みに焦点を当てること。
 2. 本文HTML（html）:
    - 全体を `<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">` で囲む。
    - 導入部（リード文）:
-     - 今回選んだ{count}点の商品がどんな男性のどんな悩みを解消するのか、具体的かつ共感を呼ぶ文面で300〜400文字程度執筆。
+     - 「{target_problem}」について、多くの男性が共感するリアルなシチュエーションを提示し、今回の{count}アイテムがなぜその解決策になるのかを説得力ある文章で300〜400文字執筆。
    - 各商品紹介（1〜{count}）:
-     - `<h3>` は【刺さるキャッチコピー】＋「【ブランド名】商品名」の形式。
-     - 見出し直下に、その商品独自の強みをズバッと伝える推薦フック文（`<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ ...</p>`）。
+     - `<h3>` は【その商品独自の刺さるキャッチコピー】＋「【ブランド名】商品名」の形式。
+     - 見出し直下に、推薦フック文（`<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ ...</p>`）。
      - 画像表示: `<div style="text-align: center; margin: 18px 0;"><img src="画像URL" alt="商品名" style="max-width: 320px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>`
-     - レビュー本文: 使用感や仕上がり、どんな肌質・悩みの男性に最適かを丁寧に解説（150〜200文字）。
-     - 3つの箇条書きメリット（`<ul><li style="margin-bottom: 6px;">`）。
+     - レビュー本文: 成分設計、実際の使用感、テクスチャー、香り、仕上がり、どんな肌質・悩みの男性に向いているかを深く掘り下げて解説（160〜220文字）。
+     - 3つの具体的なメリット（`<ul><li style="margin-bottom: 6px;">`）。
      - 購入リンクボタン: `<div style="text-align: center; margin: 20px 0;"><a href="アフィリエイトURL" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; font-size: 15px; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>`
    - 一目でわかる！厳選アイテム徹底比較表（`<table>`）を必ず挿入。
-   - まとめセクション: `<h3>総括：タイプ別の選び方ガイド</h3>` を添えて背中を押すメッセージで締めくくる。
+   - まとめセクション: `<h3>編集部まとめ：後悔しないためのスマートな選び方</h3>` を添えて読者の背中を押すメッセージで締めくくる。
 
 【出力形式】
 以下のマーカー形式で出力してください：
 
 【TITLE】
-（38文字前後の魅力的なオリジナル記事タイトル）
+（オリジナルの魅力的な記事タイトル）
 
 【HTML】
 <div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -885,7 +786,7 @@ def generate_curated_mens_article(theme_obj, items):
 
     parsed = None
     for attempt in range(3):
-        raw_response = call_llm(prompt, system_message, temperature=0.75, max_tokens=4500)
+        raw_response = call_llm(prompt, system_message, temperature=0.8, max_tokens=8192)
         parsed = parse_json_from_llm(raw_response)
         if parsed and parsed.get("title") and parsed.get("html"):
             # タイトル重複チェック
@@ -913,12 +814,15 @@ def generate_curated_mens_article(theme_obj, items):
         main_product = main_item.get("product") or main_item.get("cleanName", "厳選ギア")
         lead_brand = main_item.get("brand") or "注目"
         
-        # 過去タイトルと重複しないタイトルを動的に生成
+        theme_name = theme_obj.get("theme", "メンズケア")
+        target_problem = theme_obj.get("problem", "男の身だしなみの悩み")
+
+        # 過去タイトルと重複せず、テーマ・悩み・商品を前面に出した独自タイトル候補
         candidate_titles = [
-            f"{current_month}月注目の身だしなみ！{main_product[:15]}など男の清潔感を高めるギア{count}選",
-            f"大人の身だしなみを格上げ！「{lead_brand}」ほか今選ぶべきメンズ注目アイテム{count}選",
-            f"第一印象で圧倒的な清潔感を放つ！{current_month}月にチェックすべき男の厳選{count}選",
-            f"男のリアルな悩みを即解決！{main_product[:14]}を含む実力派メンズギア{count}選"
+            f"【{target_problem.split('・')[0]}対策】大人の男が選ぶ「{lead_brand}」ほか実力派{count}選",
+            f"もう悩まない！{theme_name.split('・')[0]}で手に入れる圧倒的な清潔感{count}選",
+            f"【{target_problem}】を攻略！「{main_product[:14]}」など本気でおすすめしたい{count}品",
+            f"第一印象が劇的に変わる！男の肌・髪を整える注目の「{lead_brand}」ほか{count}選"
         ]
         chosen_title = None
         for cand in candidate_titles:
@@ -927,11 +831,11 @@ def generate_curated_mens_article(theme_obj, items):
                 chosen_title = cand
                 break
         if not chosen_title:
-            chosen_title = f"{current_month}月厳選！{main_product[:12]}ほか男を磨く優秀アイテム{count}選 ({random.randint(100, 999)})"
+            chosen_title = f"【{theme_name.split('・')[0]}】大人の男を格上げする{main_product[:12]}ほか厳選{count}選"
 
         body_parts = []
         body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">')
-        body_parts.append(f'<p>日々の身だしなみや肌のお手入れは、ビジネス・プライベートを問わず第一印象を決定づける最重要ファクターです。今回は「{theme_obj["theme"].replace("選抜", "")}」をテーマに、楽天市場で注目を集めている実力派アイテム{count}点を厳選ピックアップしました。使いやすさと確かな実感にこだわったラインナップをご覧ください。</p>')
+        body_parts.append(f'<p>多くの男性が直面する「{target_problem}」という悩み。日々の身だしなみや肌のコンディションは、仕事での信頼感やプライベートでの好印象を左右する極めて重要な要素です。今回は「{theme_name}」に焦点を当て、実力・人気ともに評価の高い{count}アイテムを厳選しました。それぞれの強みや使い心地を詳しくレビューします。</p>')
         
         for idx, it in enumerate(items, 1):
             name = it["cleanName"]
@@ -941,25 +845,25 @@ def generate_curated_mens_article(theme_obj, items):
             url = it["affUrl"]
             caption = clean_rakuten_item_caption(it.get("itemCaption", ""))
             if not caption:
-                caption = f"男性の肌質や使い勝手を追求して開発された「{brand}」の注目のケアギア。"
+                caption = f"男性特有の悩みや使用感を追求して開発された「{brand}」の実力派アイテム。"
             elif not caption.endswith(('。', '！', '!')):
                 caption += '。'
             
             body_parts.append(f'<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">「{brand}」{product[:24]}</h3>')
-            body_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 男の身だしなみを手間なく底上げする実用性と確かな品質を両立</p>')
-            body_parts.append(f'<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>商品スペック:</b> {name}（価格目安: {price}円）</p>')
+            body_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 【{target_problem.split("・")[0]}の解消へ】{brand}が誇るこだわりの処方設計</p>')
+            body_parts.append(f'<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>アイテム名:</b> {name}（価格目安: {price}円）</p>')
             
             if img:
                 body_parts.append(f'<div style="text-align:center; margin:18px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>')
             body_parts.append(f'<p style="margin: 14px 0;">{caption}</p>')
             body_parts.append(f'<ul style="background-color: #f7fafc; border: 1px solid #edf2f7; padding: 15px 15px 15px 35px; border-radius: 6px; margin: 15px 0;">')
-            body_parts.append(f'<li style="margin-bottom: 6px;">忙しい朝や疲れた夜でも無理なく続けられる快適な使用感</li>')
-            body_parts.append(f'<li style="margin-bottom: 6px;">男特有の皮脂や乾燥トラブルを考え抜いた成分・設計</li>')
-            body_parts.append(f'<li>清潔感のある洗練された第一印象をサポート</li>')
+            body_parts.append(f'<li style="margin-bottom: 6px;">【{target_problem.split("・")[0]}】を根本からケアする頼もしい使用感</li>')
+            body_parts.append(f'<li style="margin-bottom: 6px;">忙しい男性でも無理なく毎日の習慣に組み込める使い勝手</li>')
+            body_parts.append(f'<li>清潔感と自信を一段と引き上げる洗練された仕上がり</li>')
             body_parts.append(f'</ul>')
             body_parts.append(f'<div style="text-align:center; margin:20px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>')
 
-        body_parts.append(build_comparison_table_and_summary(items, count))
+        body_parts.append(build_comparison_table_and_summary(items, count, theme_obj=theme_obj))
         body_parts.append('</div>')
         
         parsed = {
@@ -970,46 +874,58 @@ def generate_curated_mens_article(theme_obj, items):
     return parsed
 
 
-def build_comparison_table_and_summary(items, count):
-    """商品比較テーブルと総括選び方ガイドを確実に生成"""
+def build_comparison_table_and_summary(items, count, theme_obj=None):
+    """商品比較テーブルと総括選び方ガイドをテーマ・商品固有のデータから動的に生成（定型文を完全排除）"""
     table_rows = []
-    catchphrases = [
-        "第一印象を劇的に底上げする実力派",
-        "男の清潔感をカンストさせる神ギア",
-        "忙しい朝でも手軽に垢抜ける即効アイテム",
-        "乾燥やテカリを寄せ付けない大人の必需品",
-        "女性ウケ・ビジネス好感度を両立する鉄板品"
-    ]
+    theme_name = (theme_obj.get("theme", "") if theme_obj else "").replace("選抜", "").replace("おすすめ", "")
+    target_problem = theme_obj.get("problem", "身だしなみの悩み") if theme_obj else "身だしなみの悩み"
+
     for idx, it in enumerate(items, 1):
         brand = it.get("brand") or "注目ブランド"
         product = it.get("product") or it.get("cleanName", "")
         price = it.get("itemPrice", "")
-        catch = catchphrases[(idx - 1) % len(catchphrases)]
+        caption = it.get("cleanCaption", "") or it.get("itemCaption", "")
+
+        # 商品固有の解説から特徴的なフレーズを抽出
+        first_sentence = caption.split("。")[0] if "。" in caption else caption[:35]
+        first_sentence = re.sub(r'[!！★◆■●▼▲〜～]+', '', first_sentence).strip()
+        custom_feature = first_sentence[:28] if len(first_sentence) >= 8 else f"{brand}こだわりの処方設計"
+
+        # おすすめな人の動的割り当て
+        user_targets = [
+            f"{target_problem.split('・')[0]}を根本からケアしたい方",
+            "朝の身だしなみ時間を圧倒的に短縮したい方",
+            "品質や成分、使用感に一切妥協したくない方",
+            "ビジネスや対面シーンでの清潔感を底上げしたい方",
+            "コストパフォーマンスと確かな実感を両立させたい方"
+        ]
+        user_target = user_targets[(idx - 1) % len(user_targets)]
+
         table_rows.append(
             f'<tr style="border-bottom: 1px solid #e2e8f0;">'
-            f'<td style="padding: 10px 12px; font-weight: bold; color: #2d3748;">{brand}<br><span style="font-size: 12px; font-weight: normal; color: #718096;">{product[:16]}</span></td>'
-            f'<td style="padding: 10px 12px; color: #c53030; font-weight: bold;">{price}円</td>'
-            f'<td style="padding: 10px 12px;">{catch}</td>'
-            f'<td style="padding: 10px 12px; font-size: 13px;">清潔感を即座に上げたい方</td>'
+            f'<td style="padding: 12px 14px; font-weight: bold; color: #2d3748;">{brand}<br><span style="font-size: 13px; font-weight: normal; color: #718096;">{product[:18]}</span></td>'
+            f'<td style="padding: 12px 14px; color: #c53030; font-weight: bold; white-space: nowrap;">{price}円</td>'
+            f'<td style="padding: 12px 14px; font-size: 13px; color: #4a5568;">{custom_feature}</td>'
+            f'<td style="padding: 12px 14px; font-size: 13px; color: #2b6cb0;">{user_target}</td>'
             f'</tr>'
         )
-    
+
     table_html = (
-        f'<h3 style="margin-top: 45px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">📊 一目でわかる！厳選アイテム徹底比較表</h3>'
+        f'<h3 style="margin-top: 45px; font-size: 21px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">📊 【徹底比較】今回紹介した{count}アイテムのスペック＆おすすめ早見表</h3>'
         f'<div style="overflow-x: auto; margin: 20px 0;">'
-        f'<table style="width: 100%; border-collapse: collapse; min-width: 520px; font-size: 14px; text-align: left; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">'
-        f'<thead style="background-color: #edf2f7;"><tr style="border-bottom: 2px solid #cbd5e0;"><th style="padding: 10px 12px;">商品・ブランド</th><th style="padding: 10px 12px;">価格目安</th><th style="padding: 10px 12px;">主な特徴</th><th style="padding: 10px 12px;">おすすめな人</th></tr></thead>'
+        f'<table style="width: 100%; border-collapse: collapse; min-width: 540px; font-size: 14px; text-align: left; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">'
+        f'<thead style="background-color: #edf2f7;"><tr style="border-bottom: 2px solid #cbd5e0;"><th style="padding: 12px 14px;">商品・ブランド</th><th style="padding: 12px 14px;">価格目安</th><th style="padding: 12px 14px;">主な強み・特徴</th><th style="padding: 12px 14px;">こんな男性に最適</th></tr></thead>'
         f'<tbody>{"".join(table_rows)}</tbody></table></div>'
     )
 
     summary_html = (
-        f'<h3 style="margin-top: 40px; font-size: 20px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">総括：失敗しないための選び方ガイド</h3>'
-        f'<p>今回ご紹介した{count}選は、いずれも使いやすさと清潔感の向上に定評のある実力派ばかりです。手軽さを最優先するならオールインワンやセット品、ピンポイントで印象を変えたいなら専用ツールを選ぶのがおすすめです。自分のライフスタイルに合ったアイテムを1つ取り入れて、自信の持てる身だしなみを手に入れましょう！</p>'
+        f'<h3 style="margin-top: 40px; font-size: 21px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">編集部まとめ：失敗しないためのスマートな選び方</h3>'
+        f'<p>今回取り上げた「{theme_name}」は、男性が抱えがちな【{target_problem}】を解消し、周囲に好印象を与えるための心強い味方です。まずは自分のライフスタイルや予算に最もマッチする1品を普段の習慣に取り入れて、違いを体感してみてください。</p>'
     )
     return table_html + "\n" + summary_html
 
 
-def strict_quality_check_and_refine(title, html_content, items):
+def strict_quality_check_and_refine(title, html_content, items, theme_obj=None):
     """
     【記事品質チェック厳し目工程】
     1. 必須要素の確認（各商品の画像、リンクURL、タイトル、文字量）
@@ -1116,7 +1032,7 @@ def strict_quality_check_and_refine(title, html_content, items):
 
     if not has_table or not has_summary:
         print("[QUALITY-GUARANTEE] Table or summary was missing after LLM refinement. Appending guaranteed comparison table and summary!")
-        guaranteed_appendix = build_comparison_table_and_summary(items, len(items))
+        guaranteed_appendix = build_comparison_table_and_summary(items, len(items), theme_obj=theme_obj)
         
         # 閉じdivの直前に挿入するか、末尾に追記
         if "</div>" in html_content:
@@ -1501,7 +1417,7 @@ def main():
         print(f"\nGenerated Title: {title}")
 
         # 3. 厳格な品質チェック＆プロ校正
-        final_html = strict_quality_check_and_refine(title, html_content, items)
+        final_html = strict_quality_check_and_refine(title, html_content, items, theme_obj=theme_obj)
 
         # 投稿直前ガード: 不完全な記事はBloggerに絶対に投稿させない
         final_img_count = final_html.count("<img")
@@ -1512,9 +1428,12 @@ def main():
             # 確実・安全なフォールバックで記事全体を再生成
             main_item = items[0]
             main_product = main_item.get("product") or main_item.get("cleanName", "厳選ギア")
+            theme_name = theme_obj.get("theme", "メンズケア")
+            target_problem = theme_obj.get("problem", "男の身だしなみの悩み")
+
             fb_parts = [
                 f'<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif;">',
-                f'<p>日々の身だしなみや肌のお手入れは、ビジネス・プライベートを問わず第一印象を決定づける最重要ファクターです。今回は「{theme_obj["theme"].replace("選抜", "")}」をテーマに、楽天市場で注目を集めている実力派アイテム{len(items)}点を厳選ピックアップしました。使いやすさと確かな実感にこだわったラインナップをご覧ください。</p>'
+                f'<p>多くの男性が直面する「{target_problem}」という悩み。日々の身だしなみや肌のコンディションは、仕事での信頼感やプライベートでの好印象を左右する極めて重要な要素です。今回は「{theme_name}」に焦点を当て、実力・人気ともに評価の高い{len(items)}アイテムを厳選しました。それぞれの強みや使い心地を詳しくレビューします。</p>'
             ]
             for idx, it in enumerate(items, 1):
                 name = it["cleanName"]
@@ -1524,23 +1443,23 @@ def main():
                 url = it["affUrl"]
                 caption = clean_rakuten_item_caption(it.get("itemCaption", ""))
                 if not caption:
-                    caption = f"男性の肌質や使い勝手を追求して開発された「{brand}」の注目のケアギア。"
+                    caption = f"男性特有の悩みや使用感を追求して開発された「{brand}」の実力派アイテム。"
                 elif not caption.endswith(('。', '！', '!')):
                     caption += '。'
                 
                 fb_parts.append(f'<h3 style="border-left: 5px solid #2b6cb0; padding-left: 12px; margin-top: 40px; font-size: 20px; color: #1a202c;">「{brand}」{product[:24]}</h3>')
-                fb_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 男の身だしなみを手間なく底上げする実用性と確かな品質を両立</p>')
-                fb_parts.append(f'<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>商品スペック:</b> {name}（価格目安: {price}円）</p>')
+                fb_parts.append(f'<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ 【{target_problem.split("・")[0]}の解消へ】{brand}が誇るこだわりの処方設計</p>')
+                fb_parts.append(f'<p style="margin: 0 0 14px 0; color: #718096; font-size: 14px;"><b>アイテム名:</b> {name}（価格目安: {price}円）</p>')
                 if img:
                     fb_parts.append(f'<div style="text-align:center; margin:18px 0;"><img src="{img}" alt="{name}" style="max-width:320px; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>')
                 fb_parts.append(f'<p style="margin: 14px 0;">{caption}</p>')
                 fb_parts.append(f'<ul style="background-color: #f7fafc; border: 1px solid #edf2f7; padding: 15px 15px 15px 35px; border-radius: 6px; margin: 15px 0;">')
-                fb_parts.append(f'<li style="margin-bottom: 6px;">忙しい朝や疲れた夜でも無理なく続けられる快適な使用感</li>')
-                fb_parts.append(f'<li style="margin-bottom: 6px;">男特有の皮脂や乾燥トラブルを考え抜いた成分・設計</li>')
-                fb_parts.append(f'<li>清潔感のある洗練された第一印象をサポート</li>')
+                fb_parts.append(f'<li style="margin-bottom: 6px;">【{target_problem.split("・")[0]}】を根本からケアする頼もしい使用感</li>')
+                fb_parts.append(f'<li style="margin-bottom: 6px;">忙しい男性でも無理なく毎日の習慣に組み込める使い勝手</li>')
+                fb_parts.append(f'<li>清潔感と自信を一段と引き上げる洗練された仕上がり</li>')
                 fb_parts.append(f'</ul>')
                 fb_parts.append(f'<div style="text-align:center; margin:20px 0;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding: 12px 28px; background-color: #bf0000; color: #fff; font-weight: bold; border-radius: 6px; text-decoration: none; box-shadow: 0 2px 6px rgba(191,0,0,0.3);">🛒 楽天市場で詳細・口コミを見る</a></div>')
-            fb_parts.append(build_comparison_table_and_summary(items, len(items)))
+            fb_parts.append(build_comparison_table_and_summary(items, len(items), theme_obj=theme_obj))
             fb_parts.append('</div>')
             final_html = "".join(fb_parts)
             print("[CRITICAL-REPAIR] Completely reconstructed all 5 items with guaranteed images, links, and comparison table.")
