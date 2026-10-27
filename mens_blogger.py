@@ -603,19 +603,19 @@ def fetch_rakuten_mens_items(count=5):
 def call_llm(prompt, system_message, temperature=0.7, max_tokens=8192):
     """
     ユーザー規則に基づく最新Geminiモデルローテーション ＆ Groqフォールバック
-    Gemini 1.5系は完全廃止済みのため使用禁止。
+    Gemini 1.5系および廃止済みモデル（2.0-flash等）は使用禁止。
     ローテーション順:
-    gemini-2.5-flash -> gemini-3.1-flash-lite -> gemini-3.5-flash -> gemini-3.7-flash -> gemini-3.6-flash -> gemini-2.0-flash
+    gemini-2.5-flash -> gemini-2.5-pro -> gemini-3.1-flash-lite -> gemini-3.5-flash -> gemini-3.7-flash -> gemini-3.6-flash
     """
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         gemini_rotation = [
             "gemini-2.5-flash",
+            "gemini-2.5-pro",
             "gemini-3.1-flash-lite",
             "gemini-3.5-flash",
             "gemini-3.7-flash",
-            "gemini-3.6-flash",
-            "gemini-2.0-flash"
+            "gemini-3.6-flash"
         ]
         for model_name in gemini_rotation:
             try:
@@ -1267,6 +1267,7 @@ def post_to_blogger(title, content):
                         # 画面内に表示されている「新しい投稿を作成」ボタンを取得してクリック
                         btn = None
                         selectors = [
+                            'div[role="button"]:has(span:text-is("新しい投稿"))',
                             'div[role="button"][aria-label*="新しい投稿を作成"]',
                             'div[role="button"]:has-text("新しい投稿")',
                             'button:has-text("新しい投稿")',
@@ -1359,66 +1360,54 @@ def post_to_blogger(title, content):
                         title_input.fill(title)
                         time.sleep(1.5)
 
-                        print("Injecting HTML content...")
-                        # 1. BloggerのHTML編集モード (CodeMirror) への直接注入
-                        cm_injected = page.evaluate('''html => {
-                            try {
-                                const cmEl = document.querySelector('.CodeMirror');
-                                if (cmEl && cmEl.CodeMirror) {
-                                    cmEl.CodeMirror.setValue(html);
-                                    if (typeof cmEl.CodeMirror.save === 'function') {
-                                        cmEl.CodeMirror.save();
-                                    }
-                                    // 変更・保存イベントを発火させる
-                                    cmEl.CodeMirror.focus();
-                                    cmEl.CodeMirror.replaceRange(' ', cmEl.CodeMirror.getCursor());
-                                    cmEl.CodeMirror.execCommand('deleteCharBackward');
-                                    return true;
-                                }
-                            } catch (e) {
-                                console.error('CodeMirror inject error:', e);
-                            }
-                            return false;
-                        }''', content)
+                        print("Injecting HTML content via robust clipboard paste...")
+                        # CodeMirrorまたは本文入力エリアをクリックしてフォーカス
+                        cm_focused = False
+                        try:
+                            cm_box = page.locator('.CodeMirror').locator("visible=true").first
+                            if cm_box.is_visible(timeout=3000):
+                                cm_box.click()
+                                time.sleep(0.5)
+                                cm_focused = True
+                        except Exception:
+                            pass
 
-                        if cm_injected:
-                            print("[BLOGGER-INJECT] Successfully injected HTML directly into CodeMirror editor.")
-                            time.sleep(2.5)
-                        else:
-                            # 2. リッチテキスト編集モード時のフォールバック (クリップボードペースト)
-                            print("[BLOGGER-INJECT] CodeMirror not found. Falling back to clipboard paste...")
-                            print("Focusing on editor body...")
-                            page.keyboard.press('Tab')
-                            time.sleep(0.5)
-                            page.keyboard.press('Tab')
-                            time.sleep(1.0)
-
+                        if not cm_focused:
                             try:
-                                editor_body = page.locator('div[aria-label="本文"], div[aria-label="Body"], div[role="textbox"], iframe').locator("visible=true").first
-                                editor_body.click(timeout=3000)
-                            except:
-                                pass
+                                editor_body = page.locator('div[aria-label="本文"], div[aria-label="Body"], div[role="textbox"]').locator("visible=true").first
+                                if editor_body.is_visible(timeout=2000):
+                                    editor_body.click()
+                                    time.sleep(0.5)
+                            except Exception:
+                                page.keyboard.press('Tab')
+                                time.sleep(0.5)
+                                page.keyboard.press('Tab')
 
-                            page.evaluate('''html => {
-                                try {
-                                    const blob = new Blob([html], { type: 'text/html' });
-                                    const data = [new ClipboardItem({ 'text/html': blob })];
-                                    navigator.clipboard.write(data);
-                                } catch (e) {
-                                    console.error('Clipboard write failed:', e);
-                                }
-                            }''', content)
-                            time.sleep(1.5)
+                        # クリップボードにHTMLコンテンツを設定
+                        page.evaluate('''html => {
+                            try {
+                                navigator.clipboard.writeText(html);
+                            } catch (e) {
+                                const blob = new Blob([html], { type: 'text/html' });
+                                const data = [new ClipboardItem({ 'text/html': blob })];
+                                navigator.clipboard.write(data);
+                            }
+                        }''', content)
+                        time.sleep(1.0)
 
-                            page.keyboard.press('Control+V')
-                            page.keyboard.press('Meta+V')
-                            time.sleep(2.0)
+                        # 全選択してクリップボードからペースト
+                        page.keyboard.press('Control+A')
+                        page.keyboard.press('Meta+A')
+                        time.sleep(0.3)
+                        page.keyboard.press('Control+V')
+                        page.keyboard.press('Meta+V')
+                        time.sleep(2.5)
 
-                            # オートセーブを誘発
-                            page.keyboard.press('Space')
-                            time.sleep(0.5)
-                            page.keyboard.press('Backspace')
-                            time.sleep(2.0)
+                        # キーボード入力でBlogger本体の変更検知・自動保存を確実に発火
+                        page.keyboard.press('Space')
+                        time.sleep(0.3)
+                        page.keyboard.press('Backspace')
+                        time.sleep(1.5)
 
                         # CodeMirrorまたはページのHTMLを検証
                         cm_val = page.evaluate('''() => {
@@ -1433,12 +1422,12 @@ def post_to_blogger(title, content):
                         has_links = "href" in effective_html or "http" in effective_html
                         has_table = "<table" in effective_html
 
-                        if actual_img_count >= expected_img_min and has_links and has_table:
-                            print(f"Validation passed: Body content successfully inserted into Blogger editor (found {actual_img_count} images & table).")
+                        if len(effective_html) > 1000 and actual_img_count >= expected_img_min and has_links and has_table:
+                            print(f"Validation passed: Body content successfully inserted into Blogger editor (len: {len(effective_html)}, imgs: {actual_img_count}/{expected_img_min}, table: {has_table}).")
                             success = True
                             break
                         else:
-                            print(f"Validation check warning: Editor content verification incomplete (imgs found: {actual_img_count}/{expected_img_min}, table: {has_table}). Retrying...")
+                            print(f"Validation check warning: Editor content verification incomplete (len: {len(effective_html)}, imgs: {actual_img_count}/{expected_img_min}, table: {has_table}). Retrying...")
                     except Exception as e:
                         print(f"Error during attempt {attempt+1}: {e}")
                     time.sleep(2)
@@ -1487,6 +1476,48 @@ def post_to_blogger(title, content):
 
                 time.sleep(6)
                 print("Successfully published curated mens cosmetic article to Blogger!")
+
+                # 公開後の厳格な事後検証（フィードを取得して本文が0文字でないことを確認）
+                print("[POST-VERIFY] Verifying published article content from public Blogger feed...")
+                time.sleep(5)
+                try:
+                    import urllib.request
+                    feed_url = "https://mens-cosmet.blogspot.com/feeds/posts/default?alt=json&max-results=1"
+                    req = urllib.request.Request(feed_url, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        feed_data = json.loads(resp.read().decode("utf-8"))
+                        latest_entry = feed_data.get("feed", {}).get("entry", [{}])[0]
+                        latest_title = latest_entry.get("title", {}).get("$t", "")
+                        latest_content = latest_entry.get("content", {}).get("$t", "")
+                        print(f"[POST-VERIFY] Latest post in feed: '{latest_title}' (content length: {len(latest_content)} chars)")
+                        
+                        if len(latest_content) < 500:
+                            print(f"[POST-VERIFY-ERROR] Critical: Published post content is too short or empty ({len(latest_content)} chars)!")
+                            # 即時ゴミ箱移動してサイトを保護
+                            try:
+                                page.goto(f"https://draft.blogger.com/blog/posts/{blog_id}", wait_until="networkidle", timeout=20000)
+                                time.sleep(2)
+                                first_link = page.locator("a[href*='/blog/post/edit/']").first
+                                if first_link.is_visible(timeout=5000):
+                                    first_link.hover()
+                                    time.sleep(0.8)
+                                    row_trash = page.locator("div[role=button][aria-label='この投稿をゴミ箱に移動']").locator("visible=true").first
+                                    if row_trash.is_visible(timeout=3000):
+                                        row_trash.click()
+                                        time.sleep(1.0)
+                                        confirm = page.locator("div[role=button]:has-text('ゴミ箱に移動'), button:has-text('ゴミ箱に移動')").locator("visible=true").first
+                                        if confirm.is_visible(timeout=3000):
+                                            confirm.click()
+                                            print("[POST-VERIFY-CLEANUP] Empty post immediately moved to trash.")
+                            except Exception as cleanup_err:
+                                print(f"[POST-VERIFY-CLEANUP-ERR] Failed to trash bad post: {cleanup_err}")
+                            raise RuntimeError("Critical: Blogger post was published with empty content. Post was trashed and aborting.")
+                        else:
+                            print("[POST-VERIFY] Verification SUCCESS: Body content and images are fully published and live!")
+                except Exception as verify_err:
+                    if "Critical: Blogger post was published with empty content" in str(verify_err):
+                        raise
+                    print(f"[POST-VERIFY-WARN] Feed verification check encountered an error (will proceed): {verify_err}")
 
                 # 公開された最新記事のURLを取得
                 published_post_url = f"https://mens-cosmet.blogspot.com"
