@@ -1227,6 +1227,28 @@ def post_to_blogger(title, content):
                 except Exception:
                     pass
 
+                # 事前クリーンアップ：過去の失敗等で残っている空の下書きがあれば全て破棄する
+                try:
+                    for _ in range(5):
+                        links = page.locator("a[href*='/blog/post/edit/']").all()
+                        if not links:
+                            break
+                        links[0].hover()
+                        time.sleep(0.4)
+                        discard_btn = page.locator("div[role=button][aria-label='この投稿を破棄']").locator("visible=true").first
+                        if discard_btn.is_visible(timeout=1200):
+                            discard_btn.click()
+                            time.sleep(0.8)
+                            confirm = page.locator("div[role=button]:has-text('破棄'), button:has-text('破棄')").locator("visible=true").first
+                            if confirm.is_visible(timeout=1500):
+                                confirm.click()
+                                print("[PRE-CLEANUP] Discarded leftover empty draft before posting.")
+                                time.sleep(2.0)
+                        else:
+                            break
+                except Exception as cleanup_err:
+                    print(f"[PRE-CLEANUP-WARN] Note on pre-cleanup: {cleanup_err}")
+
                 # エディタ画面（新規投稿）を開く
                 editor_opened = False
                 for open_attempt in range(8):
@@ -1465,13 +1487,21 @@ def post_to_blogger(title, content):
 
                 time.sleep(3)
 
-                # 確認ダイアログの「確認」ボタン
+                # 確認ダイアログの「確定」ボタン（または「確認」）
                 try:
-                    conf_btn = page.locator('div[role="dialog"] div[role="button"]:has-text("確認"), [aria-label="確認"], [aria-label="Confirm"]').locator("visible=true").first
-                    conf_btn.click(force=True, timeout=5000)
-                    print("Confirmed publication dialog.")
+                    conf_btn = page.locator(
+                        'div[role="alertdialog"] div[role="button"]:has-text("確定"), '
+                        'div[role="alertdialog"] div[role="button"]:has-text("確認"), '
+                        'div[role="dialog"] div[role="button"]:has-text("確定"), '
+                        'div[role="dialog"] div[role="button"]:has-text("確認"), '
+                        'div[role="button"]:has-text("確定"), '
+                        '[aria-label="確定"], [aria-label="確認"], [aria-label="Confirm"]'
+                    ).locator("visible=true").first
+                    conf_btn.wait_for(state="visible", timeout=7000)
+                    conf_btn.click(force=True)
+                    print("[BLOGGER-PUBLISH] Confirmed publication dialog successfully ('確定' button clicked).")
                 except Exception as e:
-                    print("Confirm button fallback with Enter:", e)
+                    print("[BLOGGER-PUBLISH-WARN] Confirm button click warning, trying Enter fallback:", e)
                     page.keyboard.press('Enter')
 
                 time.sleep(6)
@@ -1538,6 +1568,27 @@ def post_to_blogger(title, content):
 
             except Exception as e:
                 print(f"Error during Blogger operation: {e}")
+                # 失敗時の徹底クリーンアップ：作成中だった未完了下書きを破棄して残骸を残さない
+                try:
+                    print("[POST-FAILURE-CLEANUP] Attempting to discard any leftover unfinished draft...")
+                    page.goto(f"https://draft.blogger.com/blog/posts/{blog_id}", wait_until="domcontentloaded", timeout=15000)
+                    time.sleep(1.5)
+                    first_link = page.locator("a[href*='/blog/post/edit/']").first
+                    if first_link.is_visible(timeout=3000):
+                        first_link.hover()
+                        time.sleep(0.5)
+                        discard_btn = page.locator("div[role=button][aria-label='この投稿を破棄']").locator("visible=true").first
+                        if discard_btn.is_visible(timeout=1500):
+                            discard_btn.click()
+                            time.sleep(0.8)
+                            confirm = page.locator("div[role=button]:has-text('破棄'), button:has-text('破棄')").locator("visible=true").first
+                            if confirm.is_visible(timeout=1500):
+                                confirm.click()
+                                print("[POST-FAILURE-CLEANUP] Unfinished draft discarded successfully.")
+                                time.sleep(1.5)
+                except Exception as discard_err:
+                    print(f"[POST-FAILURE-CLEANUP-WARN] Could not discard draft: {discard_err}")
+
                 raise e
 
     finally:
