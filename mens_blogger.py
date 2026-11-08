@@ -47,13 +47,35 @@ def save_posted_title(title):
     with open(POSTED_TITLES_FILE, "a", encoding="utf-8") as f:
         f.write(f"{title_clean}\n")
 
-def is_title_duplicate_or_similar(new_title, threshold=0.70):
+# スパム判定・テンプレ化を防止するための完全禁止フレーズリスト
+BANNED_TITLE_PHRASES = [
+    "鏡を見る", "鏡の前で", "鏡を見て", "鏡をのぞく", "鏡に映る", "鏡を見るのが", "鏡を見るたび",
+    "男の清潔感を高めるギア", "失敗しない", "いかがでしたでしょうか", "男を上げる", "清潔感を手に入れる",
+    "徹底解説", "完全ガイド", "徹底比較", "後悔しない", "厳選ギア"
+]
+
+def check_title_banned_phrases(title):
+    """タイトル内に陳腐なテンプレ・スパムフレーズが含まれているかチェック"""
+    if not title:
+        return True, "タイトルが空です"
+    for phrase in BANNED_TITLE_PHRASES:
+        if phrase in title:
+            return True, f"禁止フレーズ「{phrase}」が含まれています"
+    return False, None
+
+def is_title_duplicate_or_similar(new_title, threshold=0.60):
     """
-    過去のタイトルと完全一致、または類似度が閾値（70%）以上なら重複と判定
-    記号や月表記のノイズを除去して意味的な重複を徹底排除
+    過去のタイトルと完全一致、または類似度が閾値（60%）以上なら重複と判定
+    さらに禁止フレーズや冒頭の構文被り（12文字以上の先頭一致）も厳格にブロック
     """
     if not new_title:
         return True, "空のタイトル", 1.0
+
+    # 1. 禁止フレーズチェック
+    has_banned, banned_reason = check_title_banned_phrases(new_title)
+    if has_banned:
+        return True, banned_reason, 1.0
+
     existing_titles = load_posted_titles()
     clean_new = re.sub(r'[\s\d月【】選！!｜|：:・\-\[\]（）()]+', '', new_title)
     if not clean_new:
@@ -62,12 +84,19 @@ def is_title_duplicate_or_similar(new_title, threshold=0.70):
     for past in existing_titles:
         if new_title.strip() == past.strip():
             return True, past, 1.0
+
+        # 先頭フレーズ（10文字以上）の一致をチェック（例：「鏡を見るのが〜」「夕方の〜」等の出だし被り）
+        if len(new_title) >= 10 and len(past) >= 10:
+            if new_title[:10] == past[:10]:
+                return True, f"冒頭10文字重複（{past[:10]}）: {past}", 0.95
+
         clean_past = re.sub(r'[\s\d月【】選！!｜|：:・\-\[\]（）()]+', '', past)
         if not clean_past:
             continue
         ratio = difflib.SequenceMatcher(None, clean_new, clean_past).ratio()
         if ratio >= threshold:
             return True, past, ratio
+
     return False, None, 0.0
 
 def load_recent_themes(limit=10):
@@ -167,6 +196,27 @@ MENS_THEMES = [
     {"theme": "メンズ爪切り＆ガラス製爪やすり・指先の清潔感で差をつける", "keyword": "メンズ 爪切り 高級 ガラス 爪やすり ネイルケア 清潔感", "problem": "ガタガタの爪・伸びた爪・名刺交換時の指先の不潔感"},
     {"theme": "メンズファブリックスプレー・スーツのタバコ・焼肉臭を瞬時に消臭", "keyword": "メンズ ファブリックスプレー 衣類消臭 除菌 スーツ 香水代わり", "problem": "洗えないスーツに染み付いたタバコ臭・飲み会の油のニオイ"},
     {"theme": "メンズシャワージェル・欧米プレミアムなバスタイム", "keyword": "メンズ シャワージェル 高級 香り ボディウォッシュ", "problem": "マンネリ化したバスタイム・安っぽい石鹸の匂い"},
+    # === 新規拡充テーマ（脱マンネリ・独自性強化） ===
+    {"theme": "メンズアイブロウワックス＆スタイリングジェル・毛流れキープ", "keyword": "メンズ アイブロウ ワックス 眉毛キープ ジェル 透明", "problem": "ボサつき・下がる眉毛・眉メイク崩れ"},
+    {"theme": "メンズヘッドスパブラシ・入浴時の頭皮毛穴ディープクレンジング", "keyword": "メンズ スカルプブラシ ヘッドスパ シリコン 頭皮洗浄", "problem": "指先では届かない頭皮の皮脂詰まり・頭皮のコリ"},
+    {"theme": "メンズ首元・うなじ専用フレグランスクリーム", "keyword": "メンズ 首元クリーム 香り 保湿 加齢臭対策 練り香水", "problem": "耳裏やうなじからの独特な男脂臭・首元の乾燥"},
+    {"theme": "メンズ炭酸濃密泡洗顔・くすみと朝のむくみリセット", "keyword": "メンズ 炭酸洗顔 泡洗顔 高濃度炭酸 くすみ 血行促進", "problem": "朝のどんより顔・寝起きのむくみ・泡立ての手間"},
+    {"theme": "メンズかかと角質ケアやすり＆保湿バーム", "keyword": "メンズ かかと 角質除去 やすり 保湿クリーム ひび割れ", "problem": "ガサガサのかかと・ストッキングや靴下に引っかかる足裏"},
+    {"theme": "メンズスティック美容液・外出先の目元＆ほうれい線即効レスキュー", "keyword": "メンズ 美容液スティック 保湿バーム 携帯用 乾燥小ジワ", "problem": "エアコンによる部分乾燥・午後深まるほうれい線"},
+    {"theme": "メンズリップスクラブ・古い角質を落としぷるんとした唇へ", "keyword": "メンズ リップスクラブ 角質ケア 唇 縦ジワ くすみ", "problem": "リップクリームでも治らない頑固な唇の皮むけ・ザラつき"},
+    {"theme": "メンズボディスクラブ・背中ニキビ＆二の腕ザラつきオフ", "keyword": "メンズ ボディスクラブ 薬用 背中ニキビ ザラつき ソルト", "problem": "背中のブツブツ・二の腕の角化ザラつき"},
+    {"theme": "メンズ靴用除菌消臭パウダー・靴箱＆ビジネスシューズ完全無臭化", "keyword": "メンズ 靴 消臭パウダー グランズレメディ系 魔法の粉 殺菌", "problem": "スプレーでも消えない靴底に染み付いた強烈な雑菌臭"},
+    {"theme": "メンズまつ毛＆眉毛美容液・目元の印象を力強く", "keyword": "メンズ まつ毛美容液 眉毛 育毛 ハリコシ 目力", "problem": "細く薄くなった眉毛・頼りなく見える目元印象"},
+    {"theme": "メンズナイトリペアオイル・寝ている間の濃厚保湿", "keyword": "メンズ フェイスオイル スクワラン アルガンオイル 夜用", "problem": "翌朝カサつくインナードライ・クリームだけでは物足りない男肌"},
+    {"theme": "メンズクレンジングオイル・日焼け止め＆毛穴の黒ずみ即落ち", "keyword": "メンズ クレンジングオイル 角栓ポロポロ 乳化 洗顔", "problem": "ウォータープルーフ日焼け止めが落とせない・頑固な角栓"},
+    {"theme": "メンズ歯の美白・セルフホワイトニング美白歯磨き粉", "keyword": "メンズ ホワイトニング 歯磨き粉 薬用 ヤニ取り 黄ばみ", "problem": "コーヒー・タバコによる歯の黄ばみ・笑顔への自信のなさ"},
+    {"theme": "メンズヘアトリートメント・サロン帰りの指通りとまとまり", "keyword": "メンズ ヘアトリートメント 集中補修 ダメージ サロン専売", "problem": "パーマやカラーでキシむ剛毛・広がりやすい髪質"},
+    {"theme": "メンズ耳掃除・可視化イヤースコープ＆吸引耳かき", "keyword": "メンズ 耳かき カメラ付き スコープ LED ライト 耳掃除", "problem": "見えない耳垢への不安・耳掃除のやりすぎによる傷"},
+    {"theme": "メンズ衣類スチーマー・シワのないシャツで信頼感を獲得", "keyword": "メンズ 衣類スチーマー ハンディスチーマー アイロン 脱臭", "problem": "スーツやシャツの座りジワ・タバコや食事の染み付いたニオイ"},
+    {"theme": "メンズ皮脂テカリ防止下地・メイク感ゼロの透明マットベース", "keyword": "メンズ 化粧下地 テカリ防止 毛穴カバー 皮脂吸着 さらさら", "problem": "テカリ防止パウダーでも追いつかない強烈な皮脂分泌"},
+    {"theme": "メンズアロマミスト・デスクワークの集中力回復とリフレッシュ", "keyword": "メンズ ルームスプレー アロマミスト ヒノキ シダーウッド 気分転換", "problem": "長時間のPC作業による疲労・室内のこもった空気"},
+    {"theme": "メンズ高級爪切り・スパッと切れてヤスリ不要の匠の技", "keyword": "メンズ 爪切り 高級 匠の技 切れ味 飛び散り防止", "problem": "爪を切った後の二枚爪・断面のギザギザ・飛び散る爪"},
+    {"theme": "メンズスカルプマッサージブラシ・お風呂上がりの育毛剤浸透サポート", "keyword": "メンズ 頭皮マッサージャー スカルプブラシ 血行促進 育毛", "problem": "頭皮の硬さ・育毛トニックが浸透していない感覚"}
 ]
 
 
@@ -798,20 +848,30 @@ def generate_curated_mens_article(theme_obj, items):
         item_keywords_all.append(product)
     items_context = "\n".join(items_desc_list)
 
-    # 過去タイトルの一覧（直近30件）をプロンプトに含めて重複を禁止
-    past_titles = load_posted_titles()[-30:]
+    # 過去タイトルの一覧（直近50件）をプロンプトに含めて重複を禁止
+    past_titles = load_posted_titles()[-50:]
     past_titles_str = "\n".join([f"- {t}" for t in past_titles]) if past_titles else "（過去の重複なし）"
 
     target_problem = theme_obj.get("problem", "男の身だしなみの悩み")
 
+    # タイトル構文アプローチのランダム指定（テンプレート化を構造的に打破）
+    title_styles = [
+        "【悩み直撃型】「〇〇のサインを見逃すな。大人の男の〜」など痛みにフォーカス",
+        "【解決・ベネフィット型】「〜を即時無力化。午後も清潔感を死守する〜」など結果を提示",
+        "【成分・機能特化型】「ビタミンC誘導体・レチノールで挑む。男の肌構造に合わせた〜」など専門性を前面に",
+        "【シーン・シチュエーション型】「大事な商談前・至近距離の会話でも怯まない。〜」など場面を想起させる",
+        "【常識打破型】「『とりあえず化粧水』はもう古い。肌の受け入れ態勢を根本から変える〜」など意外性を提示"
+    ]
+    chosen_style = random.choice(title_styles)
+
     system_message = (
         "あなたは実力派メンズ美容ジャーナリスト・編集長です。"
         "Google検索・SEOで高く評価され、読者の男性が『まさに自分の悩みの答えがここにある』と唸るような、専門性と熱量の高い一次情報風の特集記事を執筆します。"
-        "【絶対厳守の独自性ルール】:\n"
-        "1. 『男の清潔感を高めるギア』『男を上げる』『失敗しない』『いかがでしたでしょうか』『〜ですね！』などの安易な陳腐フレーズ・テンプレ構文は完全使用禁止。\n"
-        "2. 記事タイトルは、読者の抱える具体的な痛み・悩み（例: 夕方のテカリ、青ヒゲ、頭皮臭、加齢臭など）や、選抜商品の持つ決定的な価値に切り込むこと。\n"
-        "3. 過去のタイトル構文の模倣は完全禁止。\n"
-        "4. 各商品の紹介文は、成分や処方、テクスチャー、使い心地の違いに踏み込み、5商品すべてが全く異なる個性として引き立つように具体的に書き分けること。"
+        "【絶対厳守の独自性・スパム防止ルール】:\n"
+        "1. 『鏡を見る〜』『鏡の前で〜』『鏡を見て〜』『鏡をのぞく〜』『鏡に映る〜』は【完全使用禁止】（見出し・本文でも多用厳禁）。\n"
+        "2. 『男の清潔感を高めるギア』『男を上げる』『失敗しない』『いかがでしたでしょうか』『〜ですね！』などの安易な陳腐フレーズ・テンプレ構文は完全使用禁止。\n"
+        "3. タイトルの出だしや構文パターンを過去記事と絶対に被らせないこと。\n"
+        "4. 各商品の紹介文は、成分や処方、テクスチャー、使い心地の違いに踏み込み、掲載商品すべてが全く異なる個性として引き立つように具体的に書き分けること。"
     )
 
     prompt = f"""以下は楽天市場から選抜したメンズコスメ・身だしなみアイテム{count}点の詳細データです。
@@ -819,20 +879,23 @@ def generate_curated_mens_article(theme_obj, items):
 
 【特集テーマ】: {theme_obj['theme']}
 【ターゲットの切実な悩み】: {target_problem}
+【今回のタイトル推奨スタイル】: {chosen_style}
 【掲載アイテム一覧】:
 {items_context}
 
-【過去のタイトル一覧（これらと構文やキーワード組み合わせが酷似するものは【完全禁止】）】:
+【過去のタイトル一覧（これらと構文やキーワード組み合わせ、出だしのフレーズが酷似するものは【完全禁止】）】:
 {past_titles_str}
 
 【記事作成要件】:
 1. タイトル（title）:
    - 過去のタイトル一覧と絶対に被らない、新鮮で引きの強いオリジナルタイトル（32〜42文字程度）。
+   - 「鏡を見る〜」「鏡の前で〜」などの陳腐な出だしは【絶対禁止】。
    - 「男の清潔感を高めるギア」「失敗しない〜」などの使い古されたテンプレ語句は使わず、読者の悩みや商品の強みに焦点を当てること。
 2. 本文HTML（html）:
    - 全体を `<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">` で囲む。
    - 導入部（リード文）:
-     - 「{target_problem}」について、多くの男性が共感するリアルなシチュエーションを提示し、今回の{count}アイテムがなぜその解決策になるのかを説得力ある文章で300〜400文字執筆。
+     - 「{target_problem}」について、毎回異なるリアルなシチュエーション（仕事の現場、季節の変わり目、肌質のメカニズムなど）を提示し、今回の{count}アイテムがなぜその解決策になるのかを説得力ある文章で300〜400文字執筆。
+     - 「鏡を見る」「鏡の前」などの安易な表現で書き始めないこと。
    - 各商品紹介（1〜{count}）:
      - `<h3>` は【その商品独自の刺さるキャッチコピー】＋「【ブランド名】商品名」の形式。
      - 見出し直下に、推薦フック文（`<p style="font-weight: bold; color: #2b6cb0; font-size: 15px; margin: 8px 0 6px 0;">⚡ ...</p>`）。
@@ -931,12 +994,15 @@ def generate_curated_mens_article(theme_obj, items):
         theme_name = theme_obj.get("theme", "メンズケア")
         target_problem = theme_obj.get("problem", "男の身だしなみの悩み")
 
-        # 過去タイトルと重複せず、テーマ・悩み・商品を前面に出した独自タイトル候補
+        # 過去タイトルと重複せず、テーマ・悩み・商品を前面に出した独自タイトル候補（禁止語句を排除した多様な構文）
+        prob_first = target_problem.split('・')[0]
+        theme_first = theme_name.split('・')[0]
         candidate_titles = [
-            f"【{target_problem.split('・')[0]}対策】大人の男が選ぶ「{lead_brand}」ほか実力派{count}選",
-            f"もう悩まない！{theme_name.split('・')[0]}で手に入れる圧倒的な清潔感{count}選",
-            f"【{target_problem}】を攻略！「{main_product[:14]}」など本気でおすすめしたい{count}品",
-            f"第一印象が劇的に変わる！男の肌・髪を整える注目の「{lead_brand}」ほか{count}選"
+            f"【{prob_first}対策】男の肌構造に合わせた「{lead_brand}」ほか実力派{count}選",
+            f"日々の印象を左右する{theme_first}。30代からの身だしなみ再設計{count}選",
+            f"{prob_first}の悩みをクリアに。「{main_product[:14]}」など納得の{count}品",
+            f"至近距離の会話も怖くない。信頼感を獲得する「{lead_brand}」ほか{count}選",
+            f"大人の肌トラブルに先手を打つ。{theme_first}の正解アイテム{count}選"
         ]
         chosen_title = None
         for cand in candidate_titles:
@@ -945,7 +1011,7 @@ def generate_curated_mens_article(theme_obj, items):
                 chosen_title = cand
                 break
         if not chosen_title:
-            chosen_title = f"【{theme_name.split('・')[0]}】大人の男を格上げする{main_product[:12]}ほか厳選{count}選"
+            chosen_title = f"{theme_first}の選び方。大人の品格を支える{main_product[:12]}ほか厳選{count}選"
 
         body_parts = []
         body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">')
@@ -1032,8 +1098,16 @@ def build_comparison_table_and_summary(items, count, theme_obj=None):
         f'<tbody>{"".join(table_rows)}</tbody></table></div>'
     )
 
+    summary_headers = [
+        f"編集部の視点：{theme_name.split('・')[0]}で失敗しないための選び方",
+        f"プロのアドバイス：{target_problem.split('・')[0]}を根本解決するポイント",
+        f"総括：自分に最も合う1品を見極めるチェックリスト",
+        f"後悔しないための製品選定：肌質と使用シーンから逆算する"
+    ]
+    chosen_header = random.choice(summary_headers)
+
     summary_html = (
-        f'<h3 style="margin-top: 40px; font-size: 21px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">編集部まとめ：失敗しないためのスマートな選び方</h3>'
+        f'<h3 style="margin-top: 40px; font-size: 21px; color: #1a202c; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px;">{chosen_header}</h3>'
         f'<p>今回取り上げた「{theme_name}」は、男性が抱えがちな【{target_problem}】を解消し、周囲に好印象を与えるための心強い味方です。まずは自分のライフスタイルや予算に最もマッチする1品を普段の習慣に取り入れて、違いを体感してみてください。</p>'
     )
     return table_html + "\n" + summary_html
