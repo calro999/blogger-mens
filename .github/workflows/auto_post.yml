@@ -2,9 +2,9 @@ name: Auto Post to Mens Cosmetics Blogger
 
 on:
   schedule:
-    # 1日に5回（JST: 08:30, 12:30, 16:30, 19:30, 22:30）
-    # UTC: 23:30, 03:30, 07:30, 10:30, 13:30
-    - cron: '30 23,3,7,10,13 * * *'
+    # 日本時間 (JST) 0:00〜12:00（UTC 15:00〜03:00）に毎時2回 (0分, 30分) 計24回実行
+    # 1日20〜23記事以上を確実に投稿
+    - cron: '0,30 15-23,0-2 * * *'
   workflow_dispatch:
   repository_dispatch:
 
