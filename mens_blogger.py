@@ -1569,6 +1569,173 @@ def post_to_blogger(title, content):
 
 
 
+def generate_room_comment_with_llm(item):
+    import random
+    title = item.get("itemName") or item.get("title") or ""
+    price = item.get("itemPrice") or item.get("price") or ""
+    caption = item.get("itemCaption") or item.get("catchcopy") or ""
+
+    prompt = f"""以下のギフト・プレゼント向け商品情報を基にして、楽天ROOM用の魅力的な紹介コメント（400文字以内）を生成してください。
+【商品名】: {title}
+【価格】: {price}円
+【商品説明・特徴】: {caption[:200]}
+
+以下の要件を厳格に遵守してください：
+1. 口調・トーン：ギフトを探しているユーザーに心からおすすめする丁寧かつ温かみのあるレビュー文とし、「これかわいい！」「これ気になってた！」「これ便利だよ！」といった安易な定型表現は絶対に使用しないでください。
+2. 内容：どんな相手（友人、パートナー、家族、自分へのご褒美など）やシチュエーション（誕生日、お返し、記念日等）に最適か具体的に添えて解説してください。
+3. 文字数：400文字以内（厳守。超えると投稿エラーになります）。
+4. 絵文字：5〜8個使用して華やかにすること。
+5. ハッシュタグ：3〜5個（「#ギフト #プレゼント #お祝い」等）含め、末尾に「#楽天市場」を必ず含めること。
+6. URLや疑似リンク、プレースホルダー（「[リンクはこちら]」など）は絶対に含めないでください。
+7. 出力は紹介コメントのテキストのみとし、前置きやMarkdownの装飾コードブロック等は一切含めないでください。
+"""
+
+    system_message = (
+        "あなたはセンス溢れるギフト・プレゼント選びの専門インフルエンサーです。"
+        "定型文やテンプレート表現を排し、贈る相手や場面が目に浮かぶような喜ばれるオリジナルギフト紹介文を作成してください。"
+    )
+
+    def clean_text(text):
+        return text.replace("```", "").strip()
+
+    # 1. Gemini API（最優先。thinking無効化・全parts結合で安定化）
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key:
+        models = [
+            "gemini-2.5-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash",
+            "gemini-3-flash-preview",
+            "gemini-3.1-pro-preview",
+            "gemini-flash-latest"
+        ]
+        for model_name in models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": f"{system_message}\n\n{prompt}"}]}],
+                    "generationConfig": {"temperature": 0.9, "maxOutputTokens": 600}
+                }
+                if any(v in model_name for v in ["2.5", "3.", "3-"]):
+                    payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
+                res = requests.post(url, json=payload, timeout=30)
+                if res.status_code == 200:
+                    data = res.json()
+                    candidate = data.get("candidates", [{}])[0]
+                    parts = candidate.get("content", {}).get("parts", [])
+                    text = clean_text("".join(p.get("text", "") for p in parts if p.get("text")))
+                    if len(text) > 30:
+                        print(f"Successfully generated ROOM comment via Gemini API ({model_name}).")
+                        return text
+                    finish = candidate.get("finishReason", "UNKNOWN")
+                    print(f"Gemini ({model_name}) short/empty. finishReason={finish}, text_len={len(text)}")
+                else:
+                    print(f"Gemini API ({model_name}) returned {res.status_code}: {res.text[:150]}")
+            except Exception as e:
+                print(f"Gemini API ({model_name}) error: {e}")
+
+    # 2. Groq API
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if groq_key:
+        for model_name in ["llama-3.3-70b-versatile", "llama3-70b-8192", "llama3-8b-8192"]:
+            try:
+                headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "system", "content": system_message}, {"role": "user", "content": prompt}],
+                    "temperature": 0.8,
+                    "max_tokens": 600
+                }
+                res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=25)
+                if res.status_code == 200:
+                    text = clean_text(res.json()["choices"][0]["message"]["content"])
+                    if len(text) > 30:
+                        print(f"Successfully generated ROOM comment via Groq API ({model_name}).")
+                        return text
+                else:
+                    print(f"Groq API ({model_name}) returned {res.status_code}: {res.text[:100]}")
+            except Exception as e:
+                print(f"Groq API ({model_name}) error: {e}")
+
+    # 3. OpenRouter API（有効な無料モデルを使用）
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    if openrouter_key:
+        for model_name in ["google/gemma-3-27b-it:free", "mistralai/mistral-nemo:free", "meta-llama/llama-3.2-3b-instruct:free"]:
+            try:
+                headers = {
+                    "Authorization": f"Bearer {openrouter_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com",
+                    "X-Title": "RakutenRoomBot"
+                }
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "system", "content": system_message}, {"role": "user", "content": prompt}],
+                    "temperature": 0.8,
+                    "max_tokens": 600
+                }
+                res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+                if res.status_code == 200:
+                    text = clean_text(res.json()["choices"][0]["message"]["content"])
+                    if len(text) > 30:
+                        print(f"Successfully generated ROOM comment via OpenRouter ({model_name}).")
+                        return text
+                else:
+                    print(f"OpenRouter ({model_name}) returned {res.status_code}: {res.text[:100]}")
+            except Exception as e:
+                print(f"OpenRouter ({model_name}) error: {e}")
+
+    # 4. GitHub Models API（GH_TOKENがPATの場合のみ）
+    gh_token = os.environ.get("GH_TOKEN")
+    if gh_token and not gh_token.startswith("ghs_"):
+        for model_name in ["gpt-4o-mini", "gpt-4o", "Meta-Llama-3.1-8B-Instruct"]:
+            try:
+                headers = {"Authorization": f"Bearer {gh_token}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "system", "content": system_message}, {"role": "user", "content": prompt}],
+                    "temperature": 0.8,
+                    "max_tokens": 600
+                }
+                res = requests.post("https://models.inference.ai.azure.com/chat/completions", headers=headers, json=payload, timeout=25)
+                if res.status_code == 200:
+                    text = clean_text(res.json()["choices"][0]["message"]["content"])
+                    if len(text) > 30:
+                        print(f"Successfully generated ROOM comment via GitHub Models API ({model_name}).")
+                        return text
+                else:
+                    print(f"GitHub Models API ({model_name}) returned {res.status_code}: {res.text[:100]}")
+            except Exception as e:
+                print(f"GitHub Models API ({model_name}) error: {e}")
+
+    print("WARNING: All LLM API calls failed. Generating dynamic item-aware comment.")
+    clean_title = title.replace("【", "").replace("】", "").replace("！", "").replace("✨", "")[:45]
+
+    starters = [
+        f"大切な方への贈り物や自分へのご褒美にぴったり！『{clean_title}』をピックアップ🎁",
+        f"センスの良さが光る素敵なギフト！『{clean_title}』のご紹介です✨",
+        f"お祝いやお返しに送れば喜ばれること間違いなし！『{clean_title}』をチェック🛍️",
+        f"日常に贅沢感と彩りを添えてくれる特別なおすすめアイテム『{clean_title}』💕",
+        f"失敗しないギフト選びならこれ！『{clean_title}』の魅力をチェックしてみてください👍"
+    ]
+    starter = random.choice(starters)
+
+    bodies = [
+        "デザイン性と実用性を兼ね備え、受け取った方が笑顔になる満足度の高さが魅力！😊",
+        "細部までこだわりを感じる丁寧な仕上がりで、特別な日のプレゼントに最適です✨",
+        "年代問わず喜ばれる上品なアイテム。ギフト包装して送るのにもぴったり🛍️",
+        "評価が高く自信をもっておすすめできる一品。気になる方はぜひ詳細をチェックしてみてください👍"
+    ]
+    body = random.choice(bodies)
+
+    price_info = f"（価格: {price}円）" if price else ""
+    return f"{starter}\n\n{body}\n{price_info}\n\n#ギフト #プレゼント #お祝い #楽天市場 #コレ"
+
+
 def main():
     try:
         print("=== Starting Mens Cosmetics Blogger Automation ===")
