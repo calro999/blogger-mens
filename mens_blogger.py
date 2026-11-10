@@ -660,13 +660,17 @@ def call_llm(prompt, system_message, temperature=0.7, max_tokens=8192):
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         gemini_rotation = [
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-3.1-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.7-flash",
-            "gemini-3.6-flash"
-        ]
+        "gemini-2.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-3-flash-preview",
+        "gemini-3.1-pro-preview",
+        "gemini-flash-latest"
+    ]
         for model_name in gemini_rotation:
             try:
                 api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
