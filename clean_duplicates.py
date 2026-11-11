@@ -26,7 +26,7 @@ def clean_duplicates():
             # Each post row in Blogger posts table:
             # Check row titles, if title already seen, trash the duplicate!
             deleted_count = 0
-            for pass_idx in range(5):
+            for pass_idx in range(25):
                 rows_data = page.evaluate('''() => {
                     const rows = Array.from(document.querySelectorAll('div.rb4Lrd'));
                     return rows.map((r, index) => {
