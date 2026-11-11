@@ -1,3 +1,4 @@
+import re
 
 import os, sys, base64, json, tempfile, time
 from playwright.sync_api import sync_playwright
