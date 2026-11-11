@@ -1,13 +1,10 @@
+
 import os, sys, base64, json, tempfile, time
 from playwright.sync_api import sync_playwright
 
 def clean_duplicates():
     blog_id = os.environ.get("BLOGGER_BLOG_ID")
     session_b64 = os.environ.get("BLOGGER_SESSION_B64")
-    if not blog_id or not session_b64:
-        print("Missing credentials.")
-        return
-
     decoded = base64.b64decode(session_b64).decode("utf-8")
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, suffix=".json") as tf:
         tf.write(decoded)
@@ -18,77 +15,55 @@ def clean_duplicates():
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(storage_state=sess_file, viewport={"width": 1920, "height": 1080})
             page = context.new_page()
-
             page.goto(f"https://draft.blogger.com/blog/posts/{blog_id}", wait_until="networkidle", timeout=35000)
             time.sleep(3)
 
-            # Ensure page shows up to 100 posts or scroll down
-            for _ in range(5):
-                page.mouse.wheel(0, 5000)
-                time.sleep(1)
-
-            deleted_count = 0
-            # Run loop to delete duplicates
-            for pass_idx in range(60):
-                rows_data = page.evaluate('''() => {
-                    const rows = Array.from(document.querySelectorAll('div.rb4Lrd'));
-                    return rows.map((r, index) => {
-                        const titleEl = r.querySelector('div.aIe0cc, a.mU1nid, span.S6M6ae, div[role="link"]');
-                        const title = titleEl ? titleEl.innerText.trim() : r.innerText.split('\\n')[0].trim();
-                        return { index, title };
-                    });
-                }''')
-                
-                seen_titles = set()
-                duplicate_indices = []
-                for item in rows_data:
-                    t = item['title']
-                    if not t or '(無題)' in t:
+            deleted_total = 0
+            for loop_pass in range(40):
+                rows = page.locator("div.rb4Lrd").all()
+                if not rows:
+                    break
+                seen = set()
+                dup_row = None
+                dup_title = None
+                for r in rows:
+                    txt = r.inner_text().split("\n")[0].strip()
+                    if not txt or "(無題)" in txt:
                         continue
-                    if t in seen_titles:
-                        duplicate_indices.append(item['index'])
+                    if txt in seen:
+                        dup_row = r
+                        dup_title = txt
+                        break
                     else:
-                        seen_titles.add(t)
+                        seen.add(txt)
 
-                if not duplicate_indices:
-                    print(f"Pass {pass_idx+1}: No duplicates found among {len(rows_data)} posts.")
+                if not dup_row:
+                    print(f"Pass {loop_pass+1}: No more duplicates detected! Total unique posts remaining: {len(seen)}")
                     break
 
-                target_idx = duplicate_indices[0]
-                clicked = page.evaluate('''(idx) => {
-                    const rows = Array.from(document.querySelectorAll('div.rb4Lrd'));
-                    if (rows[idx]) {
-                        const trash = rows[idx].querySelector('[aria-label="この投稿をゴミ箱に移動"], [aria-label="この投稿を破棄"], [aria-label*="ゴミ箱"]');
-                        if (trash) {
-                            trash.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                }''', target_idx)
-
-                if clicked:
-                    time.sleep(1)
-                    page.evaluate('''() => {
-                        const dialog = document.querySelector('div[role="alertdialog"], div[role="dialog"]');
-                        if (dialog) {
-                            const b = Array.from(dialog.querySelectorAll('div[role="button"], button')).find(x => 
-                                x.innerText.includes('ゴミ箱') || x.innerText.includes('破棄') || x.innerText.includes('削除')
-                            );
-                            if (b) b.click();
-                        }
-                    }''')
-                    time.sleep(2.5)
-                    deleted_count += 1
-                    print(f"[{deleted_count}] Deleted duplicate at index {target_idx}")
+                print(f"Deleting duplicate: '{dup_title[:25]}...'")
+                dup_row.hover()
+                time.sleep(0.5)
+                trash_btn = dup_row.locator('[aria-label="この投稿をゴミ箱に移動"], [aria-label="この投稿を破棄"]').first
+                if trash_btn.is_visible(timeout=2000):
+                    trash_btn.click(force=True)
                 else:
-                    print(f"Could not click trash at index {target_idx}")
-                    break
+                    trash_btn.dispatch_event('click')
+                time.sleep(1.0)
+                
+                # Click confirmation
+                conf = page.locator('div[role="alertdialog"] div[role="button"], div[role="dialog"] div[role="button"]').filter(has_text=re.compile(r'ゴミ箱|破棄|削除|確定|確認')).first
+                if conf.is_visible(timeout=3000):
+                    conf.click(force=True)
+                else:
+                    page.keyboard.press('Enter')
+                time.sleep(3.0)
+                deleted_total += 1
 
-            print(f"=== Finished Cleanup: Total {deleted_count} duplicates removed. ===")
+            print(f"=== Successfully deleted {deleted_total} duplicates! ===")
     finally:
         if os.path.exists(sess_file):
             os.remove(sess_file)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     clean_duplicates()
