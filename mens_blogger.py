@@ -1543,6 +1543,20 @@ def post_to_blogger(title, content):
                         raise
                     print(f"[POST-VERIFY-WARN] Feed verification check encountered an error: {verify_err}")
 
+                published_post_url = "https://mens-cosmet.blogspot.com"
+                try:
+                    time.sleep(2)
+                    post_link_el = page.locator('a[href*=".blogspot.com/"][aria-label*="表示"], a[href*=".blogspot.com/"][aria-label*="View"], a[href*=".blogspot.com/20"]').first
+                    if post_link_el.is_visible(timeout=5000):
+                        href = post_link_el.get_attribute("href")
+                        if href and "blogspot.com" in href:
+                            published_post_url = href
+                            print(f"[BLOGGER-URL] Retrieved published post URL: {published_post_url}")
+                except Exception as ue:
+                    print(f"[BLOGGER-URL-WARN] Could not retrieve specific post URL, using base URL: {ue}")
+
+                return published_post_url
+
             except Exception as e:
                 print(f"Error during Blogger operation: {e}")
                 try:
@@ -1803,20 +1817,8 @@ def main():
             print("[CRITICAL-REPAIR] Completely reconstructed all 5 items with guaranteed images, links, and comparison table.")
 
         # 4. Bloggerへ自動投稿（room投稿は行わない）
-        blogger_post_url = None
-        for b_attempt in range(3):
-            try:
-                print(f"\n[MAIN] Executing Blogger Post Attempt {b_attempt + 1} / 3...")
-                blogger_post_url = post_to_blogger(title, final_html)
-                if blogger_post_url:
-                    break
-            except Exception as pe:
-                print(f"[MAIN-WARN] Blogger post attempt {b_attempt + 1} failed: {pe}")
-                if b_attempt < 2:
-                    print("[MAIN-WARN] Waiting 20 seconds before retry...")
-                    time.sleep(20.0)
-                else:
-                    raise pe
+        print("\n[MAIN] Executing Blogger Post...")
+        blogger_post_url = post_to_blogger(title, final_html)
 
         print(f"Blogger Publication Complete: {blogger_post_url}")
 
