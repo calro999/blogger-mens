@@ -19,14 +19,17 @@ def clean_duplicates():
             context = browser.new_context(storage_state=sess_file, viewport={"width": 1920, "height": 1080})
             page = context.new_page()
 
-            page.goto(f"https://draft.blogger.com/blog/posts/{blog_id}", wait_until="networkidle", timeout=30000)
+            page.goto(f"https://draft.blogger.com/blog/posts/{blog_id}", wait_until="networkidle", timeout=35000)
             time.sleep(3)
 
-            # Look through posts list and identify duplicates
-            # Each post row in Blogger posts table:
-            # Check row titles, if title already seen, trash the duplicate!
+            # Ensure page shows up to 100 posts or scroll down
+            for _ in range(5):
+                page.mouse.wheel(0, 5000)
+                time.sleep(1)
+
             deleted_count = 0
-            for pass_idx in range(25):
+            # Run loop to delete duplicates
+            for pass_idx in range(60):
                 rows_data = page.evaluate('''() => {
                     const rows = Array.from(document.querySelectorAll('div.rb4Lrd'));
                     return rows.map((r, index) => {
@@ -48,11 +51,9 @@ def clean_duplicates():
                         seen_titles.add(t)
 
                 if not duplicate_indices:
-                    print("No more duplicates found on page.")
+                    print(f"Pass {pass_idx+1}: No duplicates found among {len(rows_data)} posts.")
                     break
 
-                print(f"Pass {pass_idx+1}: Found duplicate indices to remove: {duplicate_indices}")
-                # Delete the first duplicate found
                 target_idx = duplicate_indices[0]
                 clicked = page.evaluate('''(idx) => {
                     const rows = Array.from(document.querySelectorAll('div.rb4Lrd'));
@@ -77,13 +78,14 @@ def clean_duplicates():
                             if (b) b.click();
                         }
                     }''')
-                    time.sleep(3)
+                    time.sleep(2.5)
                     deleted_count += 1
-                    print(f"Successfully deleted duplicate #{deleted_count}")
+                    print(f"[{deleted_count}] Deleted duplicate at index {target_idx}")
                 else:
+                    print(f"Could not click trash at index {target_idx}")
                     break
 
-            print(f"Total duplicates cleaned: {deleted_count}")
+            print(f"=== Finished Cleanup: Total {deleted_count} duplicates removed. ===")
     finally:
         if os.path.exists(sess_file):
             os.remove(sess_file)
