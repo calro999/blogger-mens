@@ -48,10 +48,18 @@ def save_posted_title(title):
         f.write(f"{title_clean}\n")
 
 # スパム判定・テンプレ化を防止するための完全禁止フレーズリスト
+# スパム判定・テンプレ化を防止するための完全禁止フレーズリスト
 BANNED_TITLE_PHRASES = [
+    # 鏡系（完全禁止）
     "鏡を見る", "鏡の前で", "鏡を見て", "鏡をのぞく", "鏡に映る", "鏡を見るのが", "鏡を見るたび",
+    # 頻出・陳腐な言い回し・常套句（完全禁止）
+    "至近距離の会話", "至近距離でも動じない", "至近距離の視線", "至近距離の商談", "至近距離でも余裕",
+    "至近距離でも怖くない", "至近距離でも怯まない", "至近距離で差がつく", "至近距離も余裕", "至近距離",
+    "深夜のPC作業", "深夜の濃厚補給", "深夜の", "頭皮の停滞", "頭皮の硬化", "頭皮の詰まり",
     "男の清潔感を高めるギア", "失敗しない", "いかがでしたでしょうか", "男を上げる", "清潔感を手に入れる",
-    "徹底解説", "完全ガイド", "徹底比較", "後悔しない", "厳選ギア"
+    "徹底解説", "完全ガイド", "徹底比較", "後悔しない", "厳選ギア", "注目のアイテム", "人気アイテム",
+    "完全制圧", "完全抹消", "根源から断つ", "根こそぎ", "構造改革", "死守する", "無力化する", "ねじ伏せる",
+    "5選", "４選", "3選", "３選", "おすすめ", "大人気", "決定版", "神ギア", "神アイテム"
 ]
 
 def check_title_banned_phrases(title):
@@ -63,10 +71,22 @@ def check_title_banned_phrases(title):
             return True, f"禁止フレーズ「{phrase}」が含まれています"
     return False, None
 
-def is_title_duplicate_or_similar(new_title, threshold=0.60):
+def check_phrase_frequency(new_title, past_titles, min_len=4, max_len=8, threshold=2):
+    """過去タイトルとのN-gramフレーズ被り（4〜8文字の連続一致）が頻発していないかチェック"""
+    clean_new = re.sub(r'[\s\d選！!｜|：:・\-\[\]（）()「」『』。、]+', '', new_title)
+    for l in range(min_len, min_len + 3):
+        for i in range(len(clean_new) - l + 1):
+            sub = clean_new[i:i+l]
+            # 過去タイトルに出現した回数をカウント
+            match_count = sum(1 for p in past_titles if sub in p)
+            if match_count >= threshold:
+                return True, f"過去タイトルで頻出している部分フレーズ「{sub}」（過去{match_count}回出現）と重複"
+    return False, None
+
+def is_title_duplicate_or_similar(new_title, threshold=0.50):
     """
-    過去のタイトルと完全一致、または類似度が閾値（60%）以上なら重複と判定
-    さらに禁止フレーズや冒頭の構文被り（12文字以上の先頭一致）も厳格にブロック
+    過去タイトルとの類似度チェック（閾値50%に厳格化）
+    先頭5文字の一致、4文字以上の部分フレーズ頻出、禁止語句を完全排除
     """
     if not new_title:
         return True, "空のタイトル", 1.0
@@ -77,20 +97,25 @@ def is_title_duplicate_or_similar(new_title, threshold=0.60):
         return True, banned_reason, 1.0
 
     existing_titles = load_posted_titles()
-    clean_new = re.sub(r'[\s\d月【】選！!｜|：:・\-\[\]（）()]+', '', new_title)
+    clean_new = re.sub(r'[\s\d選！!｜|：:・\-\[\]（）()「」『』。、]+', '', new_title)
     if not clean_new:
         return True, "無効なタイトル", 1.0
+
+    # 2. フレーズ頻出チェック（直近60件の過去タイトルと比較）
+    has_freq, freq_reason = check_phrase_frequency(new_title, existing_titles[-60:], min_len=4, threshold=2)
+    if has_freq:
+        return True, freq_reason, 0.90
 
     for past in existing_titles:
         if new_title.strip() == past.strip():
             return True, past, 1.0
 
-        # 先頭フレーズ（10文字以上）の一致をチェック（例：「鏡を見るのが〜」「夕方の〜」等の出だし被り）
-        if len(new_title) >= 10 and len(past) >= 10:
-            if new_title[:10] == past[:10]:
-                return True, f"冒頭10文字重複（{past[:10]}）: {past}", 0.95
+        # 先頭フレーズ（5文字以上）の一致をチェック（例：「至近距離〜」「深夜の〜」「頭皮の〜」等の出だし被り即座に却下）
+        if len(new_title) >= 5 and len(past) >= 5:
+            if new_title[:5] == past[:5]:
+                return True, f"冒頭5文字重複（{past[:5]}）: {past}", 0.95
 
-        clean_past = re.sub(r'[\s\d月【】選！!｜|：:・\-\[\]（）()]+', '', past)
+        clean_past = re.sub(r'[\s\d選！!｜|：:・\-\[\]（）()「」『』。、]+', '', past)
         if not clean_past:
             continue
         ratio = difflib.SequenceMatcher(None, clean_new, clean_past).ratio()
@@ -192,7 +217,7 @@ MENS_THEMES = [
     {"theme": "メンズ足用消臭クリーム・長時間の革靴でも靴を脱げる清潔足へ", "keyword": "メンズ 足 消臭クリーム 薬用 殺菌 防臭 革靴 ムレ", "problem": "居酒屋のお座敷で靴を脱ぐ恐怖・足の強烈なニオイ"},
     {"theme": "メンズ練り香水・ふんわり香ってビジネスでも好印象なソリッドパフューム", "keyword": "メンズ 練り香水 ソリッドパフューム シトラス サボン 清潔感 つけすぎない", "problem": "香水のつけすぎによるスメハラ・きつい人工香料"},
     {"theme": "メンズ高保湿ハンドクリーム・名刺交換で魅せるベタつかない手元", "keyword": "メンズ ハンドクリーム ベタつかない さらさら スマホ操作 保湿 手荒れ", "problem": "カサカサの手・ささくれ・スマホ画面への指紋ベタつき"},
-    {"theme": "メンズ舌ブラシ＆口臭予防ジェル・至近距離の会話も怖くない", "keyword": "メンズ 口臭予防 舌ブラシ 舌ジェル 薬用 オーラルケア 息スッキリ", "problem": "朝の口臭・タバコやコーヒー後の口内ネバつき"},
+    {"theme": "メンズ舌ブラシ＆口臭予防ジェル・会話前の口内エチケット", "keyword": "メンズ 口臭予防 舌ブラシ 舌ジェル 薬用 オーラルケア 息スッキリ", "problem": "朝の口臭・タバコやコーヒー後の口内ネバつき"},
     {"theme": "メンズ爪切り＆ガラス製爪やすり・指先の清潔感で差をつける", "keyword": "メンズ 爪切り 高級 ガラス 爪やすり ネイルケア 清潔感", "problem": "ガタガタの爪・伸びた爪・名刺交換時の指先の不潔感"},
     {"theme": "メンズファブリックスプレー・スーツのタバコ・焼肉臭を瞬時に消臭", "keyword": "メンズ ファブリックスプレー 衣類消臭 除菌 スーツ 香水代わり", "problem": "洗えないスーツに染み付いたタバコ臭・飲み会の油のニオイ"},
     {"theme": "メンズシャワージェル・欧米プレミアムなバスタイム", "keyword": "メンズ シャワージェル 高級 香り ボディウォッシュ", "problem": "マンネリ化したバスタイム・安っぽい石鹸の匂い"},
@@ -853,18 +878,19 @@ def generate_curated_mens_article(theme_obj, items):
     items_context = "\n".join(items_desc_list)
 
     # 過去タイトルの一覧（直近50件）をプロンプトに含めて重複を禁止
-    past_titles = load_posted_titles()[-50:]
+    past_titles = load_posted_titles()[-80:]
     past_titles_str = "\n".join([f"- {t}" for t in past_titles]) if past_titles else "（過去の重複なし）"
 
     target_problem = theme_obj.get("problem", "男の身だしなみの悩み")
 
-    # タイトル構文アプローチのランダム指定（テンプレート化を構造的に打破）
+    # 多彩なタイトル構文アプローチ（同一フレーズ・同一切り口を完全根絶）
     title_styles = [
-        "【悩み直撃型】「〇〇のサインを見逃すな。大人の男の〜」など痛みにフォーカス",
-        "【解決・ベネフィット型】「〜を即時無力化。午後も清潔感を死守する〜」など結果を提示",
-        "【成分・機能特化型】「ビタミンC誘導体・レチノールで挑む。男の肌構造に合わせた〜」など専門性を前面に",
-        "【シーン・シチュエーション型】「大事な商談前・至近距離の会話でも怯まない。〜」など場面を想起させる",
-        "【常識打破型】「『とりあえず化粧水』はもう古い。肌の受け入れ態勢を根本から変える〜」など意外性を提示"
+        "【日常ルーティン革新型】「朝の洗面台での3分を見直す。肌のコンディションを保つ〜」など所作・習慣に言及",
+        "【テクスチャー・使用感型】「ベタつきを残さずスッと馴染む。重いケアが苦手な男のための〜」など質感に言及",
+        "【成分・機能解剖型】「セラミド・炭・クレイの物理吸着。男の厚い皮膚構造に着目した〜」などメカニズムを解説",
+        "【オフィスカジュアル・対人マナー型】「第一印象の清潔感は細部に宿る。ビジネスシーンで好印象を与える〜」など自然な対人関係に言及",
+        "【新常識・選択眼型】「ただ塗るだけのケアから脱却。大人の肌に必要な要素だけを絞り込んだ〜」など選択の知恵を提示",
+        "【季節・環境順応型】「エアコンの乾燥や日中の紫外線に負けない。日々の肌環境を整える〜」など外気・生活環境に言及"
     ]
     chosen_style = random.choice(title_styles)
 
@@ -872,9 +898,9 @@ def generate_curated_mens_article(theme_obj, items):
         "あなたは実力派メンズ美容ジャーナリスト・編集長です。"
         "Google検索・SEOで高く評価され、読者の男性が『まさに自分の悩みの答えがここにある』と唸るような、専門性と熱量の高い一次情報風の特集記事を執筆します。"
         "【絶対厳守の独自性・スパム防止ルール】:\n"
-        "1. 『鏡を見る〜』『鏡の前で〜』『鏡を見て〜』『鏡をのぞく〜』『鏡に映る〜』は【完全使用禁止】（見出し・本文でも多用厳禁）。\n"
-        "2. 『男の清潔感を高めるギア』『男を上げる』『失敗しない』『いかがでしたでしょうか』『〜ですね！』などの安易な陳腐フレーズ・テンプレ構文は完全使用禁止。\n"
-        "3. タイトルの出だしや構文パターンを過去記事と絶対に被らせないこと。\n"
+        "1. 『鏡を見る〜』『至近距離の〜』『頭皮の〜』『深夜の〜』で始まるタイトルは【完全使用禁止】。\n"
+        "2. 『男の清潔感を高めるギア』『男を上げる』『失敗しない』『〇〇選』『神アイテム』『完全制圧』『無力化』などの安易な陳腐フレーズ・テンプレ構文・同じ定型文末は完全使用禁止。\n"
+        "3. 過去タイトルの出だし（冒頭5文字以上）や構文パターンと絶対に被らない、全く新しい自然で知的な日本語タイトルをつけること。\n"
         "4. 各商品の紹介文は、成分や処方、テクスチャー、使い心地の違いに踏み込み、掲載商品すべてが全く異なる個性として引き立つように具体的に書き分けること。"
     )
 
@@ -1002,11 +1028,11 @@ def generate_curated_mens_article(theme_obj, items):
         prob_first = target_problem.split('・')[0]
         theme_first = theme_name.split('・')[0]
         candidate_titles = [
-            f"【{prob_first}対策】男の肌構造に合わせた「{lead_brand}」ほか実力派{count}選",
-            f"日々の印象を左右する{theme_first}。30代からの身だしなみ再設計{count}選",
-            f"{prob_first}の悩みをクリアに。「{main_product[:14]}」など納得の{count}品",
-            f"至近距離の会話も怖くない。信頼感を獲得する「{lead_brand}」ほか{count}選",
-            f"大人の肌トラブルに先手を打つ。{theme_first}の正解アイテム{count}選"
+            f"{theme_first}の選び方。大人の品格を支える「{lead_brand}」注目の逸品",
+            f"毎日の身だしなみを見直す。{prob_first}に寄り添う「{main_product[:12]}」",
+            f"清潔感ある印象を保つために。{theme_first}の実力派アイテム特集",
+            f"肌の負担を減らし健やかに整える。こだわり設計の「{lead_brand}」",
+            f"大人の男性が知っておくべき{prob_first}へのアプローチとケアの知恵"
         ]
         chosen_title = None
         for cand in candidate_titles:
