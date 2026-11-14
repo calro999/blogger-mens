@@ -48,10 +48,11 @@ def save_posted_title(title):
         f.write(f"{title_clean}\n")
 
 # スパム判定・テンプレ化を防止するための完全禁止フレーズリスト
-# スパム判定・テンプレ化を防止するための完全禁止フレーズリスト
 BANNED_TITLE_PHRASES = [
     # 鏡系（完全禁止）
     "鏡を見る", "鏡の前で", "鏡を見て", "鏡をのぞく", "鏡に映る", "鏡を見るのが", "鏡を見るたび",
+    # 毎日の身だしなみ系・テンプレ出だし（完全禁止）
+    "毎日の身だしなみを見直す", "毎日の身だしなみ", "身だしなみを見直す", "身だしなみの新常識",
     # 頻出・陳腐な言い回し・常套句（完全禁止）
     "至近距離の会話", "至近距離でも動じない", "至近距離の視線", "至近距離の商談", "至近距離でも余裕",
     "至近距離でも怖くない", "至近距離でも怯まない", "至近距離で差がつく", "至近距離も余裕", "至近距離",
@@ -71,12 +72,28 @@ def check_title_banned_phrases(title):
             return True, f"禁止フレーズ「{phrase}」が含まれています"
     return False, None
 
-def check_phrase_frequency(new_title, past_titles, min_len=4, max_len=8, threshold=2):
-    """過去タイトルとのN-gramフレーズ被り（4〜8文字の連続一致）が頻発していないかチェック"""
+# 一般的・業界標準的な語句（これらはN-gramの頻出禁止対象から除外）
+COMMON_ALLOWED_TERMS = {
+    "ビジネス", "リセット", "メンズ", "スキンケア", "コスメ", "シャンプー",
+    "トリートメント", "クレンジング", "コンディショナー", "コンシーラー",
+    "ファンデーション", "アイブロウ", "ポマード", "ワックス", "ジェル",
+    "ローション", "スプレー", "パウダー", "クリーム", "バーム",
+    "エチケット", "清潔感", "アイテム", "レビュー", "特集",
+    "スタイル", "ルーティン", "アプローチ", "デザイン", "ナチュラル"
+}
+
+def check_phrase_frequency(new_title, past_titles, min_len=5, max_len=8, threshold=3):
+    """
+    過去タイトルとの特徴的フレーズ被り（5〜8文字の連続一致）が頻発していないかチェック
+    一般的な美容・ビジネス語句は除外し、特徴的なキャッチコピーの重複のみを厳密に検知
+    """
     clean_new = re.sub(r'[\s\d選！!｜|：:・\-\[\]（）()「」『』。、]+', '', new_title)
     for l in range(min_len, min_len + 3):
         for i in range(len(clean_new) - l + 1):
             sub = clean_new[i:i+l]
+            # 一般的用語が含まれる場合はスキップ
+            if any(term in sub for term in COMMON_ALLOWED_TERMS):
+                continue
             # 過去タイトルに出現した回数をカウント
             match_count = sum(1 for p in past_titles if sub in p)
             if match_count >= threshold:
@@ -992,22 +1009,55 @@ def generate_curated_mens_article(theme_obj, items):
         return True, "OK"
 
     parsed = None
-    for attempt in range(3):
-        raw_response = call_llm(prompt, system_message, temperature=0.8, max_tokens=8192)
+    for attempt in range(4):
+        raw_response = call_llm(prompt, system_message, temperature=0.85, max_tokens=8192)
         parsed = parse_json_from_llm(raw_response)
         if parsed and parsed.get("title") and parsed.get("html"):
             # タイトル重複チェック
             is_dup, past_match, sim = is_title_duplicate_or_similar(parsed["title"])
             if is_dup:
-                print(f"[TITLE-DUP-DETECTED] Generated title '{parsed['title']}' is too similar to '{past_match}' (similarity: {sim:.2f}). Retrying generation...")
-                prompt += f"\n\n※注意: 先ほど生成されたタイトル「{parsed['title']}」は過去タイトルと類似しているため却下されました。全く異なる表現・切り口でタイトルを再生成してください。"
-                parsed = None
-                continue
+                print(f"[TITLE-DUP-DETECTED] Generated title '{parsed['title']}' is too similar to '{past_match}' (similarity: {sim:.2f}). Retrying title generation via dedicated LLM call...")
+                # タイトルのみを専用LLMコールで再生成（本文全体を破棄しない）
+                new_title_prompt = f"""以下の特集記事のために、絶対に過去タイトルと被らない全く新しいオリジナルタイトルを1本だけ作成してください。
+
+【特集テーマ】: {theme_obj.get('theme', '')}
+【解消する悩み】: {target_problem}
+【掲載商品例】: {items[0].get('cleanName', '')}、{items[1].get('cleanName', '') if len(items)>1 else ''}
+
+【過去のタイトル（これらと出だし5文字・構文・キーワード組み合わせが被るものは完全禁止）】:
+{past_titles_str}
+
+【絶対厳守ルール】:
+1. 「毎日の身だしなみ」「鏡を見る」「至近距離」「深夜の」「頭皮の」「〇選」「おすすめ」などの語句や出だしは完全使用禁止。
+2. 商品固有の成分、テクスチャー、シチュエーションに着目し、30〜42文字で知的かつ引きの強い日本語タイトルにすること。
+3. タイトル文字列のみを1行で出力してください（鍵括弧や前置き不要）。
+"""
+                title_system = "あなたは独自性と言語センスに定評のあるプロの美容ジャーナリストです。"
+                title_approved = False
+                for t_attempt in range(4):
+                    fresh_title = call_llm(new_title_prompt, title_system, temperature=0.9, max_tokens=150)
+                    if fresh_title:
+                        fresh_title = fresh_title.strip().splitlines()[0].replace('"', '').replace('「', '').replace('」', '')
+                        t_dup, t_match, t_sim = is_title_duplicate_or_similar(fresh_title)
+                        if not t_dup:
+                            print(f"[TITLE-RECOVERY-SUCCESS] Dedicated LLM title generated: '{fresh_title}'")
+                            parsed["title"] = fresh_title
+                            title_approved = True
+                            break
+                        else:
+                            print(f"[TITLE-RETRY {t_attempt+1}] Title '{fresh_title}' duplicate ({t_match}). Retrying...")
+                            new_title_prompt += f"\n※注意: 「{fresh_title}」は類似のため却下されました。全く別の言い回しで再出力してください。"
+
+                if not title_approved:
+                    print("[TITLE-WARN] Dedicated LLM could not produce distinct title in 4 attempts. Retrying full generation...")
+                    prompt += f"\n\n※注意: 先ほど生成されたタイトル「{parsed['title']}」は過去タイトルと類似しているため却下されました。全く異なる表現・切り口でタイトルを再生成してください。"
+                    parsed = None
+                    continue
 
             # 本文の完全性チェック（5商品全掲載・画像・リンク・テーブルの欠損を許さない）
             is_complete, comp_msg = validate_article_completeness(parsed["html"], items)
             if not is_complete:
-                print(f"[ARTICLE-INCOMPLETE-DETECTED] Generated article is incomplete: {comp_msg}. Retrying LLM generation (attempt {attempt+1}/3)...")
+                print(f"[ARTICLE-INCOMPLETE-DETECTED] Generated article is incomplete: {comp_msg}. Retrying LLM generation (attempt {attempt+1}/4)...")
                 prompt += f"\n\n※重要: 前回の生成は【{comp_msg}】のため不完全でした。必ず掲載アイテム一覧の全{count}商品を1点ずつ画像・解説・リンク・メリット付きで余すことなく執筆し、比較表まで完結させてください。"
                 parsed = None
                 continue
@@ -1024,24 +1074,38 @@ def generate_curated_mens_article(theme_obj, items):
         theme_name = theme_obj.get("theme", "メンズケア")
         target_problem = theme_obj.get("problem", "男の身だしなみの悩み")
 
-        # 過去タイトルと重複せず、テーマ・悩み・商品を前面に出した独自タイトル候補（禁止語句を排除した多様な構文）
-        prob_first = target_problem.split('・')[0]
-        theme_first = theme_name.split('・')[0]
-        candidate_titles = [
-            f"{theme_first}の選び方。大人の品格を支える「{lead_brand}」注目の逸品",
-            f"毎日の身だしなみを見直す。{prob_first}に寄り添う「{main_product[:12]}」",
-            f"清潔感ある印象を保つために。{theme_first}の実力派アイテム特集",
-            f"肌の負担を減らし健やかに整える。こだわり設計の「{lead_brand}」",
-            f"大人の男性が知っておくべき{prob_first}へのアプローチとケアの知恵"
-        ]
+        # LLMによる動的フォールバックタイトル生成（固定テンプレートは完全廃止）
+        fb_title_prompt = f"""メンズコスメ記事の高品質で独立したオリジナルタイトルを1本だけ作成してください。
+テーマ: {theme_name}
+ターゲットの悩み: {target_problem}
+メイン商品: {lead_brand} {main_product[:15]}
+
+【過去タイトル（重複厳禁）】:
+{past_titles_str}
+
+【条件】:
+- 「毎日の身だしなみ」「鏡を見る」「至近距離」「深夜の」「〇選」などの陳腐表現は一切含めない。
+- 30〜42文字程度の自然で知的な日本語。
+- タイトル文字列のみを1行で出力。
+"""
         chosen_title = None
-        for cand in candidate_titles:
-            is_dup, _, _ = is_title_duplicate_or_similar(cand)
-            if not is_dup:
-                chosen_title = cand
-                break
+        for _ in range(4):
+            gen_fb_t = call_llm(fb_title_prompt, "プロの男性美容エディター", temperature=0.9, max_tokens=150)
+            if gen_fb_t:
+                gen_fb_t = gen_fb_t.strip().splitlines()[0].replace('"', '').replace('「', '').replace('」', '')
+                f_dup, _, _ = is_title_duplicate_or_similar(gen_fb_t)
+                if not f_dup:
+                    chosen_title = gen_fb_t
+                    break
+
         if not chosen_title:
-            chosen_title = f"{theme_first}の選び方。大人の品格を支える{main_product[:12]}ほか厳選{count}選"
+            # 万が一の動的ランダム生成（固定構文を完全排除）
+            import random
+            prob_core = target_problem.split('・')[0]
+            theme_core = theme_name.split('・')[0]
+            action_verbs = ["整える", "見つめ直す", "刷新する", "解きほぐす", "快適に保つ", "アップデートする"]
+            situations = ["多忙な日々に", "大人の嗜みとして", "肌環境に寄り添う", "清潔感を意識する"]
+            chosen_title = f"{random.choice(situations)}「{lead_brand}」で{prob_core}を{random.choice(action_verbs)}知恵"
 
         body_parts = []
         body_parts.append(f'<div class="mens-curation-article" style="line-height: 1.85; color: #2d3748; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">')
