@@ -594,27 +594,41 @@ def fetch_rakuten_mens_items(count=5):
     data = response.json() if response.status_code == 200 else {}
     items_raw = data.get("Items", [])
 
-    # キーワードが長すぎて0件の場合は単語を絞り込んでフォールバック検索
-    if not items_raw and len(keyword.split()) > 2:
-        fallback_keyword = " ".join(keyword.split()[:2])
-        print(f"Fallback search with simplified keyword: '{fallback_keyword}'")
-        params["keyword"] = fallback_keyword
+    # 0件の場合はキーワード簡略化または別テーマで最大5回フォールバック試行
+    search_attempts = 0
+    while not items_raw and search_attempts < 5:
+        search_attempts += 1
+        alt_theme = random.choice([t for t in available_themes if t != theme_obj])
+        print(f"[RETRY {search_attempts}/5] Retrying with alternative theme: {alt_theme['theme']}")
+        # 検索キーワードを2〜3単語に絞って確実にヒットさせる
+        simplified_kw = " ".join(alt_theme["keyword"].split()[:2])
+        params["keyword"] = simplified_kw
+        theme_obj = alt_theme
+        try:
+            alt_resp = requests.get(url, params=params, timeout=20)
+            if alt_resp.status_code == 200:
+                items_raw = alt_resp.json().get("Items", [])
+                if items_raw:
+                    print(f"Successfully retrieved {len(items_raw)} items for '{simplified_kw}'")
+                    break
+        except Exception as e:
+            print(f"Error fetching alternative theme: {e}")
+
+    # それでも0件の場合は、メンズコスメ全般の広域キーワードで確実に取得
+    if not items_raw:
+        print("[FALLBACK] Performing broad search for 'メンズ コスメ スキンケア'...")
+        params["keyword"] = "メンズ スキンケア"
         fb_resp = requests.get(url, params=params, timeout=20)
         if fb_resp.status_code == 200:
             items_raw = fb_resp.json().get("Items", [])
+            theme_obj = {
+                "theme": "大人のメンズスキンケア",
+                "problem": "肌荒れ・乾燥・テカリの総合ケア",
+                "keyword": "メンズ スキンケア"
+            }
 
     if not items_raw:
-        # 別のテーマでリトライ
-        alt_theme = random.choice([t for t in MENS_THEMES if t != theme_obj])
-        print(f"Retrying with alternative theme: {alt_theme['theme']}")
-        params["keyword"] = alt_theme["keyword"]
-        theme_obj = alt_theme
-        alt_resp = requests.get(url, params=params, timeout=20)
-        if alt_resp.status_code == 200:
-            items_raw = alt_resp.json().get("Items", [])
-
-    if not items_raw:
-        raise RuntimeError(f"No items found for keyword: {keyword}")
+        raise RuntimeError(f"Could not retrieve items from Rakuten API after multiple retries.")
 
     posted_cache = load_posted_cache()
     selected_items = []
@@ -1100,7 +1114,6 @@ def generate_curated_mens_article(theme_obj, items):
 
         if not chosen_title:
             # 万が一の動的ランダム生成（固定構文を完全排除）
-            import random
             prob_core = target_problem.split('・')[0]
             theme_core = theme_name.split('・')[0]
             action_verbs = ["整える", "見つめ直す", "刷新する", "解きほぐす", "快適に保つ", "アップデートする"]
