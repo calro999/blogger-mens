@@ -34,6 +34,7 @@ LATEST_POST_FILE = "latest_blogger_post.json"
 
 BLUESKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "tigyu-cosme.bsky.social")
 BLUESKY_APP_PASSWORD = os.environ.get("BLUESKY_APP_PASSWORD", "ebeq-ainb-o63m-tfwc")
+DEFAULT_BLOG_URL = os.environ.get("TIGYU_BLOG_URL", "https://tigyu-mens.vercel.app/")
 
 # ユーザー規則に基づく最新Gemini対応モデル一覧（Gemini 1.5は完全廃止済みのため除外）
 GEMINI_MODELS = [
@@ -281,15 +282,18 @@ def build_bluesky_post_payload(post_text, blogger_url, affiliate_url, clean_item
     """
     BlueskyのTextBuilderを用いて、リッチリンク・ハッシュタグを適切に配置した投稿データを作成
     上限300文字/バイト制限に余裕を持たせた設計。
+    ブログ誘導URLは指定の https://tigyu-mens.vercel.app/ （または環境変数/設定）を優先使用。
     """
     tb = client_utils.TextBuilder()
+
+    target_blog_url = DEFAULT_BLOG_URL if DEFAULT_BLOG_URL else (blogger_url or "https://tigyu-mens.vercel.app/")
 
     # 1. 本文
     tb.text(post_text.strip() + "\n\n")
 
-    # 2. Bloggerまとめ記事へのリンク
+    # 2. ブログまとめ記事へのリンク
     tb.text("📖 徹底比較・詳細レビュー:\n")
-    tb.link("👉 ブログ記事を読む", blogger_url)
+    tb.link("👉 ブログ記事を読む", target_blog_url)
     tb.text("\n\n")
 
     # 3. 厳選アイテムの楽天アフィリンク
@@ -419,8 +423,9 @@ def post_to_bluesky_from_blogger(blogger_url, article_title, theme_obj, items):
     print(f"[SELECT] Picked featured item for Bluesky: {clean_name}")
 
     # Geminiで垢抜け本音レビュー文を生成
-    post_text = generate_tigyu_post_text(theme_name, target_item, blogger_url)
-    tb = build_bluesky_post_payload(post_text, blogger_url, affiliate_url, clean_name)
+    target_blog_url = DEFAULT_BLOG_URL if DEFAULT_BLOG_URL else (blogger_url or "https://tigyu-mens.vercel.app/")
+    post_text = generate_tigyu_post_text(theme_name, target_item, target_blog_url)
+    tb = build_bluesky_post_payload(post_text, target_blog_url, affiliate_url, clean_name)
 
     # アイテム画像の取得
     image_bytes = fetch_item_image_bytes(target_item.get("imgUrl"))

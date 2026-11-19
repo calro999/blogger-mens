@@ -43,6 +43,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE || 'tigyu-cosme.bsky.social' }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD || 'ebeq-ainb-o63m-tfwc' }}
+          TIGYU_BLOG_URL: ${{ secrets.TIGYU_BLOG_URL || 'https://tigyu-mens.vercel.app/' }}
         run: |
           MAX_RETRIES=3
           COUNT=0
