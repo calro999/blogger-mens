@@ -10,7 +10,6 @@ import requests
 from atproto import Client, client_utils
 from PIL import Image
 
-# .env を安全に自動ロード
 def load_env_file(filepath=".env"):
     if os.path.exists(filepath):
         try:
@@ -27,29 +26,31 @@ def load_env_file(filepath=".env"):
             pass
 
 load_env_file()
+load_env_file(".env.local")
 
 BLUESKY_HISTORY_FILE = "bluesky_post_history.txt"
+BLUESKY_TEXT_HISTORY_FILE = "bluesky_text_history.txt"
 BLUESKY_ENGAGEMENT_FILE = "bluesky_engagement_history.txt"
-LATEST_POST_FILE = "latest_blogger_post.json"
 
 BLUESKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "tigyu-cosme.bsky.social")
 BLUESKY_APP_PASSWORD = os.environ.get("BLUESKY_APP_PASSWORD", "ebeq-ainb-o63m-tfwc")
-DEFAULT_BLOG_URL = os.environ.get("TIGYU_BLOG_URL", "https://tigyu-mens.vercel.app/")
+DEFAULT_BLOG_URL = os.environ.get("TIGYU_BLOG_URL", "https://tigyu-mens.vercel.app")
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 
 # ユーザー規則に基づく最新Gemini対応モデル一覧（Gemini 1.5は完全廃止済みのため除外）
 GEMINI_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
     "gemini-2.5-flash",
     "gemini-3.5-flash",
     "gemini-3.6-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
     "gemini-2.5-flash-lite",
     "gemini-2.5-pro",
     "gemini-3-flash",
-    "gemini-3.1-pro",
-    "gemini-3.7-flash"
+    "gemini-3.1-pro"
 ]
 
 def load_posted_history():
@@ -58,9 +59,20 @@ def load_posted_history():
             return set(line.strip() for line in f if line.strip())
     return set()
 
-def record_posted_history(item_identifier):
+def record_posted_history(slug):
     with open(BLUESKY_HISTORY_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{item_identifier}\n")
+        f.write(f"{slug}\n")
+
+def load_text_history():
+    if os.path.exists(BLUESKY_TEXT_HISTORY_FILE):
+        with open(BLUESKY_TEXT_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+    return []
+
+def record_text_history(text):
+    cleaned = re.sub(r'\s+', ' ', text).strip()
+    with open(BLUESKY_TEXT_HISTORY_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{cleaned}\n")
 
 def load_engagement_history():
     if os.path.exists(BLUESKY_ENGAGEMENT_FILE):
@@ -72,6 +84,26 @@ def record_engagement_history(identifier):
     with open(BLUESKY_ENGAGEMENT_FILE, "a", encoding="utf-8") as f:
         f.write(f"{identifier}\n")
 
+def is_similar_to_history(new_text, history_list):
+    """過去の投稿テキストと冒頭・末尾・主要フレーズの重複を多角的に厳格判定"""
+    if not history_list:
+        return False
+    new_norm = re.sub(r'[\s、。！？!?,.]', '', new_text)
+    for past in history_list[-30:]:
+        past_norm = re.sub(r'[\s、。！？!?,.]', '', past)
+        # 冒頭12文字が完全一致
+        if len(new_norm) >= 12 and len(past_norm) >= 12 and new_norm[:12] == past_norm[:12]:
+            return True
+        # 末尾12文字が完全一致
+        if len(new_norm) >= 12 and len(past_norm) >= 12 and new_norm[-12:] == past_norm[-12:]:
+            return True
+        # 18文字以上の連続共通部分
+        if len(new_norm) >= 18 and len(past_norm) >= 18:
+            for i in range(len(new_norm) - 17):
+                if new_norm[i:i+18] in past_norm:
+                    return True
+    return False
+
 def optimize_image_bytes(raw_bytes, max_bytes=850000):
     """Blueskyのアップロード上限（Blob最大2MB、推奨1MB未満）に合わせて画像をリサイズ・軽量化"""
     if len(raw_bytes) <= max_bytes:
@@ -80,11 +112,9 @@ def optimize_image_bytes(raw_bytes, max_bytes=850000):
         img = Image.open(io.BytesIO(raw_bytes))
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        
         max_dim = 1600
         if max(img.size) > max_dim:
             img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
-        
         quality = 90
         while quality >= 50:
             out = io.BytesIO()
@@ -106,19 +136,14 @@ def fetch_item_image_bytes(image_url):
     if not image_url:
         return None
 
-    # 高画質URL候補のリスト
     candidates = []
-    # 1. 700x700 高解像度サムネイル
     if "_ex=" in image_url:
         candidates.append(re.sub(r'\?_ex=[0-9]+x[0-9]+', '?_ex=700x700', image_url))
-    # 2. クエリパラメータ全削除（原寸大）
     clean_url = image_url.split("?")[0]
     candidates.append(clean_url)
-    # 3. オリジナルサーバー（image.rakuten.co.jp）
     if "@0_mall/" in clean_url:
         orig_url = clean_url.replace("https://thumbnail.image.rakuten.co.jp/@0_mall/", "https://image.rakuten.co.jp/")
         candidates.append(orig_url)
-    # 4. 元のURL
     candidates.append(image_url)
 
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -131,7 +156,6 @@ def fetch_item_image_bytes(image_url):
         except Exception:
             continue
 
-    # フォールバック
     try:
         res = requests.get(image_url, headers=headers, timeout=10)
         if res.status_code == 200 and len(res.content) > 1000:
@@ -140,47 +164,118 @@ def fetch_item_image_bytes(image_url):
         print(f"[WARN] Failed to fetch item image from {image_url}: {e}")
     return None
 
-BLUESKY_TEXT_HISTORY_FILE = "bluesky_text_history.txt"
+def generate_dynamic_smart_fallback(title, item_name, cur_month, cur_season, past_texts):
+    clean_item = re.sub(r'【.*?】|\[.*?\]|（.*?）', '', item_name).strip()
+    words = clean_item.split()
+    short_name = " ".join(words[:3]) if len(words) >= 3 else clean_item
+    if len(short_name) > 26:
+        short_name = short_name[:26].strip()
 
-def load_text_history():
-    if os.path.exists(BLUESKY_TEXT_HISTORY_FILE):
-        with open(BLUESKY_TEXT_HISTORY_FILE, "r", encoding="utf-8") as f:
-            return [line.strip() for line in f if line.strip()]
-    return []
+    persona_templates = [
+        {
+            "openers": [
+                f"学生時代、見た目で損して自己肯定感底辺だった過去の自分に真っ先に手渡したいのが「{short_name}」。",
+                f"「どうせ何使っても変わらない」って諦めてた過去の自分をぶん殴りたくなる逸品が「{short_name}」。",
+                f"早く知っておけば何年も清潔感で損せずに済んだのに…と本気で悔やんだ神ギアがこれ。",
+                f"鏡見るたびに肌や身だしなみで憂鬱になってた時期、これに出会ってたら一瞬で救われてた。"
+            ],
+            "cores": [
+                f"{cur_month}月の{cur_season}特有の乾燥やトラブルを寄せ付けず、使った翌朝から肌治安が別人に仕上がる。",
+                f"難しいテクニック一切なしでサッと仕込むだけで、周囲から「なんか雰囲気変わった？」って自然に聞かれるレベル。",
+                f"テカリやパサつきを一発でリセットして、男の第一印象で一番大事な『圧倒的な清潔感』を底上げしてくれる。",
+                f"ベタつきや違和感が一切残らないから、ズボラで面倒くさがりな自分でも毎日ノンストレスで続いた。"
+            ],
+            "closers": [
+                "見た目に本気で自信持ちたいなら、遠回りせずにまずこれから投資してほしい。",
+                "身だしなみで二度と損したくない男子は、騙されたと思って試してみてほしい。",
+                "小さな課金で自己肯定感が劇的に跳ね上がるから、迷ってる暇あったら即導入推奨。",
+                "「何から変えればいいか分からない」なら、まずこれ握りしめておけば間違いなく勝てる。"
+            ]
+        },
+        {
+            "openers": [
+                f"至近距離で人と話すとき、相手の視線が自分の肌やパーツにいってヒヤッとしたことないか？",
+                f"服をいくらオシャレにしても、顔まわりや細部の清潔感が抜けてたら一発で台無しになる。",
+                f"飲み会やオフィスで「この人清潔感あるな」と思われる男子が密かに仕込んでるのが「{short_name}」。",
+                f"女子が本能的にチェックしてるのって、ブランド服じゃなくて肌と身だしなみの細部なんだよな。"
+            ],
+            "cores": [
+                f"「{short_name}」は至近距離で見られても隙がないレベルで、毛穴感や清潔感をしっかり整えてくれる。",
+                f"清潔感の土台を一瞬で作れるから、急なデートや大事な予定の前でも焦る必要が完全になくなる。",
+                f"不潔に見える原因を根本からブロックしてくれるから、会話中の目線にビビることが一切なくなった。",
+                f"{cur_month}月の乾燥しやすいコンディションでも、カサつき知らずの清潔感カンスト状態をキープできる。"
+            ],
+            "closers": [
+                "人前で堂々と笑えるようになりたいなら、迷わず自分の身だしなみに課金してほしい。",
+                "第一印象で減点されたくない全メンズへ、本気でおすすめしたい必須の武器。",
+                "会話中の距離感に自信が持てるようになるから、毎日の対人関係のストレスが激減する。",
+                "清潔感を最速でカンストさせたいなら、まずこのアイテムから仕込んでみてくれ。"
+            ]
+        },
+        {
+            "openers": [
+                f"男の垢抜け投資で「一番コスパ良くて即効性あったギアどれ？」って聞かれたら迷わずこれ。",
+                f"朝の貴重な時間を1ミリも無駄にしたくないズボラ男子こそ「{short_name}」を使うべき。",
+                f"高いエステや美容医療に手を出す前に、まず毎日の習慣に「{short_name}」を組み込むのが正解。",
+                f"手間をかけずに最短ルートで見た目のクオリティを上げたいなら、これ以上の選択肢はない。"
+            ],
+            "cores": [
+                f"毎日のわずか数分で完結するのに、仕上がりと肌の清潔感はサロン級に跳ね上がる。",
+                f"手頃な価格帯なのに中身のクオリティがガチすぎて、適当買いとは次元が違う。",
+                f"使い心地が軽やかで続けやすいから、習慣化した瞬間から垢抜けスピードが一気に加速する。",
+                f"無駄なステップを全部省いて、男が一番必要としてる効果だけをピンポイントで届けてくれる。"
+            ],
+            "closers": [
+                "最小の努力で最大の清潔感を手に入れたいなら、これ一択で間違いない。",
+                "面倒くさがりだけどカッコよくなりたい男子は、今すぐルーティンに取り入れてほしい。",
+                "コスパもタイパも最高峰。一度この快適さを知ったら二度と手放せなくなる。",
+                "時間とお金を無駄に浪費したくないなら、まずこの逸品から試してみてくれ。"
+            ]
+        },
+        {
+            "openers": [
+                f"{cur_month}月の乾燥と冷え込みで、肌や身だしなみが一気にカサついて清潔感落ちてないか？",
+                f"暖房の効いた部屋にいると、夕方に顔がパリパリになったり皮脂崩れして絶望する男へ。",
+                f"季節の変わり目に清潔感を落とす男子が多い中、涼しい顔で好印象をキープできる神アイテム。",
+                f"秋冬の乾燥対策、何を選べばいいか迷ってるなら「{short_name}」がダントツで心強い。"
+            ],
+            "cores": [
+                f"外気と暖房のダブルパンチから肌を守り抜いて、うるおいと清潔感の黄金バランスをキープしてくれる。",
+                f"粉吹きや不快なベタつきを徹底的に防いで、いつ誰に見られても恥ずかしくない清潔肌に整えてくれる。",
+                f"乾燥による見た目のくすみや疲れ感をパッと払拭して、イキイキとした清潔感ある印象を取り戻せる。",
+                f"重たい使用感が苦手な男でもゴクゴク使える馴染みの良さで、秋冬の過酷な環境を余裕で乗り切れる。"
+            ],
+            "closers": [
+                "今の季節を清潔感あるイケメン肌で乗り切りたいなら、絶対にポーチや洗面台に常備しておくべき。",
+                "乾燥で老け見えする前に、今すぐこの名品で清潔感のバリアを張ってほしい。",
+                "季節の変わり目こそ差がつくタイミング。周囲と圧倒的な清潔感の差をつけよう。",
+                "秋冬の身だしなみで絶対に失敗したくないなら、これを持っておけば間違いない。"
+            ]
+        }
+    ]
 
-def record_text_history(text):
-    # 改行をスペースに置換して1行で保存
-    cleaned = re.sub(r'\s+', ' ', text).strip()
-    with open(BLUESKY_TEXT_HISTORY_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{cleaned}\n")
+    for _ in range(30):
+        persona = random.choice(persona_templates)
+        op = random.choice(persona["openers"])
+        co = random.choice(persona["cores"])
+        cl = random.choice(persona["closers"])
+        candidate = f"{op} {co} {cl}"
+        if not is_similar_to_history(candidate, past_texts):
+            return candidate
 
-def is_similar_to_history(new_text, history_list):
-    """過去の投稿テキストと冒頭部分や主要フレーズが重複していないかを厳格判定"""
-    if not history_list:
-        return False
-    new_norm = re.sub(r'[\s、。！？!?,.]', '', new_text)
-    for past in history_list[-20:]: # 直近20件をチェック
-        past_norm = re.sub(r'[\s、。！？!?,.]', '', past)
-        # 冒頭18文字が完全一致
-        if len(new_norm) >= 18 and len(past_norm) >= 18:
-            if new_norm[:18] == past_norm[:18]:
-                return True
-        # 共通部分の長さチェック
-        if new_norm in past_norm or past_norm in new_norm:
-            return True
-    return False
+    return f"{persona_templates[0]['openers'][0]} {persona_templates[0]['cores'][0]} {persona_templates[0]['closers'][0]}"
 
-def generate_tigyu_post_text(theme_name, item, blogger_url):
+
+def generate_tigyu_post_text(article, item):
     """
     最新Geminiモデルを活用し、「チー牛ラボ 〜劇的垢抜けアイテム研究〜」として
     AI臭さのないリアルで熱量の高い推薦ポスト文を生成。
     過去の投稿と重複しない完全にユニークな文章を保証。
-    現在の季節・時期（10月・秋など）に厳格に合わせたリアルなトーンで作成。
+    現在の季節・時期に厳格に合わせたリアルなトーンで作成。
     """
-    clean_name = item.get("cleanName") or item.get("itemName") or "厳選アイテム"
-    price = item.get("itemPrice", "")
-    price_info = f"（約{price:,}円）" if price else ""
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    title = article.get("title", "")
+    item_name = item.get("name", "厳選アイテム")
+    price = item.get("price", "")
 
     now = datetime.now()
     cur_month = now.month
@@ -188,7 +283,6 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
 
     past_texts = load_text_history()
 
-    # 多彩な切り口（テンプレート使い回しを完全に禁止・12パターン以上）
     hooks_angles = [
         "「垢抜けたいなら真っ先にこれを使え！」と断言する理由",
         "「色々試したけど、結局これが一番清潔感出た…！」という本気のおすすめ",
@@ -206,10 +300,10 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
     random.shuffle(hooks_angles)
 
     text = None
-    if gemini_key:
+    if GEMINI_KEY:
         random_models = list(GEMINI_MODELS)
         random.shuffle(random_models)
-        
+
         for angle in hooks_angles[:4]:
             if text:
                 break
@@ -219,11 +313,12 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
 
 【現在の時期・季節】
 - 現在は {cur_month}月（{cur_season}）です。
-- ※重要：過去や時期外れの季節（例: 秋なのに「夏前」「真夏」など）に関する言及は【完全厳禁】です。今の時期（{cur_month}月・{cur_season}の乾燥対策や季節の変わり目、秋冬の身だしなみ）、または年中通して使える清潔感アップ習慣として語ってください。
+- ※重要：過去や時期外れの季節に関する言及は【完全厳禁】です。今の時期（{cur_month}月・{cur_season}の乾燥対策や季節の変わり目、秋冬の身だしなみ）、または年中通して使える清潔感アップ習慣として語ってください。
 
 【今回の厳選アイテム】
-- テーマ: {theme_name}
-- 商品名: {clean_name} {price_info}
+- 記事タイトル: {title}
+- 商品名: {item_name}（{price}）
+- 対象読者: {article.get('targetAudience', '清潔感を出したいZ世代男性')}
 - 今回の切り口: {angle}
 
 【厳格な執筆ルール】
@@ -237,7 +332,7 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
 
             for model in random_models[:3]:
                 try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
                     payload = {
                         "contents": [{"parts": [{"text": f"{system_instruction}\n\n{prompt}"}]}],
                         "generationConfig": {"temperature": 0.92, "maxOutputTokens": 300}
@@ -253,57 +348,62 @@ def generate_tigyu_post_text(theme_name, item, blogger_url):
                                 gen_text = gen_text.replace("```", "").replace("\n\n", "\n").strip()
                                 gen_text = re.sub(r'https?://[^\s]+', '', gen_text).strip()
                                 gen_text = re.sub(r'#[^\s]+', '', gen_text).strip()
-                                
+
                                 if len(gen_text) >= 40 and not is_similar_to_history(gen_text, past_texts):
                                     text = gen_text
                                     print(f"[BLUESKY-LLM] Generated unique text using {model}: {text[:50]}...")
                                     break
                                 else:
                                     print(f"[BLUESKY-LLM] Rejected duplicate/similar text. Retrying with another angle/model...")
-                except Exception as e:
+                except Exception:
                     continue
 
     if not text:
-        # 重複しない多彩なフォールバック
-        fallbacks = [
-            f"垢抜けたいなら真っ先にこれを使え！{cur_month}月の乾燥・季節の変わり目で清潔感を落としたくないなら「{clean_name}」はガチで必需品。これだけで肌と顔まわりの印象が劇的に変わる。迷ったらまずこれから試してほしい神アイテム。",
-            f"清潔感を劇的に底上げしたい男子へ。「{clean_name}」は使い心地も仕上がりも文句なしに別格。見た目変えたいけど何から始めればいいか悩んでるなら、まずはこれ一択。垢抜けスピードが加速する。",
-            f"【チー牛脱却の必須ギア】肌や見た目の印象で損したくないなら、騙されたと思って「{clean_name}」使ってみてほしい。一発で肌の清潔感底上げされて自己肯定感バグる。垢抜けたいなら絶対に外せない逸品。",
-            f"女子ウケや第一印象を本気で変えたいならコレ。「{clean_name}」は男の清潔感を一瞬でカンストさせるレベルの仕上がり。手頃なのに効果抜群で、もっと早く買えばよかったと後悔した神ギア。"
-        ]
-        # 過去に使われていないものを選択
-        unused_fallbacks = [fb for fb in fallbacks if not is_similar_to_history(fb, past_texts)]
-        text = random.choice(unused_fallbacks if unused_fallbacks else fallbacks)
+        text = generate_dynamic_smart_fallback(title, item_name, cur_month, cur_season, past_texts)
+        print(f"[BLUESKY-FALLBACK] Used dynamic persona-based fallback: {text[:50]}...")
 
     return text
 
-
-def build_bluesky_post_payload(post_text, blogger_url, affiliate_url, clean_item_name):
+def build_bluesky_post_payload(post_text, site_article_url, affiliate_url, item_name):
     """
     BlueskyのTextBuilderを用いて、リッチリンク・ハッシュタグを適切に配置した投稿データを作成
     上限300文字/バイト制限に余裕を持たせた設計。
-    ブログ誘導URLは指定の https://tigyu-mens.vercel.app/ （または環境変数/設定）を優先使用。
     """
     tb = client_utils.TextBuilder()
-
-    target_blog_url = DEFAULT_BLOG_URL if DEFAULT_BLOG_URL else (blogger_url or "https://tigyu-mens.vercel.app/")
 
     # 1. 本文
     tb.text(post_text.strip() + "\n\n")
 
-    # 2. ブログまとめ記事へのリンク
-    tb.text("📖 徹底比較・詳細レビュー:\n")
-    tb.link("👉 ブログ記事を読む", target_blog_url)
+    # 2. ブログ記事へのリンク（多彩な見出し＆ボタン）
+    link_intros = [
+        ("📖 徹底比較・詳細レビュー:\n", "👉 ブログで比較をチェック"),
+        ("🔍 アイテム選びの全貌はこちら:\n", "👉 ブログの検証結果を見る"),
+        ("📝 詳しい使い分け・リアル感想:\n", "👉 レビュー詳細を読む"),
+        ("💡 失敗しない選び方・比較まとめ:\n", "👉 詳しい記事はこちら"),
+        ("⚡️ 詳しい使用感と他社比較:\n", "👉 ブログで全比較を見る"),
+    ]
+    l_intro, l_btn = random.choice(link_intros)
+    tb.text(l_intro)
+    tb.link(l_btn, site_article_url)
     tb.text("\n\n")
 
-    # 3. 厳選アイテムの楽天アフィリンク
+    # 3. 厳選アイテムの楽天アフィリンク（多彩な見出し＆ボタン）
     if affiliate_url:
-        tb.text("🛒 今回の劇的垢抜けアイテム:\n")
-        tb.link("👉 楽天でチェック", affiliate_url)
+        aff_intros = [
+            ("🛒 今回の劇的垢抜けアイテム:\n", "👉 楽天で詳細をチェック"),
+            ("🔥 ガチ推しの垢抜けギア:\n", "👉 楽天市場で見る"),
+            ("✨ 一発で清潔感カンストする名品:\n", "👉 楽天の最安・在庫を見る"),
+            ("🛍️ 清潔感爆上げの神アイテム:\n", "👉 楽天で今すぐチェック"),
+        ]
+        a_intro, a_btn = random.choice(aff_intros)
+        tb.text(a_intro)
+        tb.link(a_btn, affiliate_url)
         tb.text("\n\n")
 
-    # 4. 厳選ハッシュタグ
-    tags = ["垢抜け", "メンズコスメ", "清潔感", "メンズスキンケア"]
+    # 4. 厳選ハッシュタグ（ローテーション）
+    tag_pool = ["垢抜け", "メンズコスメ", "清潔感", "メンズスキンケア", "メンズ美容", "身だしなみ", "男磨き"]
+    random.shuffle(tag_pool)
+    tags = tag_pool[:4]
     for i, t in enumerate(tags):
         tb.tag(f"#{t}", t)
         if i < len(tags) - 1:
@@ -381,15 +481,9 @@ def run_mens_engagement_cycle(client):
 
     print(f"[ENGAGE-SUMMARY] Engagement finished: {likes_done} likes, {follows_done} follows.")
 
-def post_to_bluesky_from_blogger(blogger_url, article_title, theme_obj, items):
-    """
-    Blogger投稿完了時に直接呼び出されるエントリーポイント
-    Bloggerの記事URL、タイトル、選抜アイテム情報を受け取り、最もおすすめの1点に焦点を当ててBlueskyに投稿
-    """
-    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Starting Bluesky post for 'チー牛ラボ'...")
-
+def post_article_to_bluesky(article):
     if not BLUESKY_APP_PASSWORD:
-        print("[WARN] BLUESKY_APP_PASSWORD is not set. Skipping Bluesky post. (Set BLUESKY_APP_PASSWORD in .env or GitHub Secrets)")
+        print("[WARN] BLUESKY_APP_PASSWORD is not set. Skipping Bluesky post.")
         return False
 
     client = Client()
@@ -400,38 +494,24 @@ def post_to_bluesky_from_blogger(blogger_url, article_title, theme_obj, items):
         print(f"[ERROR] Failed to login to Bluesky: {e}")
         return False
 
-    # 投稿する厳選アイテムを1点選定（過去にBlueskyで投稿していないものを優先）
-    history_set = load_posted_history()
-    target_item = None
-    for it in items:
-        code = str(it.get("itemCode") or "")
-        if code and code not in history_set:
-            target_item = it
-            break
-    if not target_item and items:
-        target_item = random.choice(items)
-
-    if not target_item:
-        print("[ERROR] No valid items to post.")
-        return False
-
-    theme_name = theme_obj.get("theme", "メンズコスメ選抜")
-    clean_name = target_item.get("cleanName", "おすすめアイテム")
-    affiliate_url = target_item.get("affUrl", "")
-    item_code = str(target_item.get("itemCode") or "")
+    comps = article.get("comparisonTable", [])
+    rep_item = comps[0] if comps else {"name": article.get("title", ""), "price": "", "affiliateUrl": "https://item.rakuten.co.jp/"}
+    site_article_url = f"{DEFAULT_BLOG_URL.rstrip('/')}/posts/{article['slug']}"
+    affiliate_url = rep_item.get("affiliateUrl") or "https://item.rakuten.co.jp/"
+    clean_name = rep_item.get("name", "おすすめアイテム")
 
     print(f"[SELECT] Picked featured item for Bluesky: {clean_name}")
 
-    # Geminiで垢抜け本音レビュー文を生成
-    target_blog_url = DEFAULT_BLOG_URL if DEFAULT_BLOG_URL else (blogger_url or "https://tigyu-mens.vercel.app/")
-    post_text = generate_tigyu_post_text(theme_name, target_item, target_blog_url)
-    tb = build_bluesky_post_payload(post_text, target_blog_url, affiliate_url, clean_name)
+    post_text = generate_tigyu_post_text(article, rep_item)
+    tb = build_bluesky_post_payload(post_text, site_article_url, affiliate_url, clean_name)
 
-    # アイテム画像の取得
-    image_bytes = fetch_item_image_bytes(target_item.get("imgUrl"))
+    # アイテム画像を高画質化・最適化して取得
+    img_url = rep_item.get("imageUrl") or article.get("heroImage")
+    image_bytes = fetch_item_image_bytes(img_url)
 
     try:
         if image_bytes:
+            print("[BLUESKY] Uploading high-res image to Bluesky...")
             response = client.send_image(
                 text=tb,
                 image=image_bytes,
@@ -442,10 +522,10 @@ def post_to_bluesky_from_blogger(blogger_url, article_title, theme_obj, items):
             response = client.send_post(text=tb)
             print(f"[SUCCESS] Posted text only to Bluesky! URI: {response.uri}")
 
-        if item_code:
-            record_posted_history(item_code)
+        record_posted_history(article["slug"])
+        record_text_history(post_text)
 
-        # エンゲージメント
+        # エンゲージメント自動サイクル（いいね4〜7件、フォロー1〜2件）
         time.sleep(random.uniform(2.5, 5.0))
         run_mens_engagement_cycle(client)
         return True
@@ -454,34 +534,34 @@ def post_to_bluesky_from_blogger(blogger_url, article_title, theme_obj, items):
         print(f"[ERROR] Failed to send post to Bluesky: {e}")
         return False
 
-def save_latest_blogger_post_info(blogger_url, article_title, theme_obj, items):
-    """次回単独実行時にも利用できるよう、最新のBlogger記事・商品情報をJSONに保存"""
-    data = {
-        "blogger_url": blogger_url,
-        "article_title": article_title,
-        "theme_obj": theme_obj,
-        "items": items,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
-    with open(LATEST_POST_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
 def main():
-    """コマンドラインから単独実行する場合"""
-    print("=== Standalone Bluesky Post for チー牛ラボ ===")
-    if not os.path.exists(LATEST_POST_FILE):
-        print(f"[INFO] {LATEST_POST_FILE} not found. Please run mens_blogger.py first or trigger via workflow.")
-        sys.exit(0)
+    print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}] Starting Bluesky post for 'チー牛ラボ'...")
+    data_file = "data/posts.json"
+    if not os.path.exists(data_file):
+        print(f"[ERROR] {data_file} not found.")
+        sys.exit(1)
 
-    with open(LATEST_POST_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    with open(data_file, "r", encoding="utf-8") as f:
+        posts = json.load(f)
 
-    success = post_to_bluesky_from_blogger(
-        blogger_url=data.get("blogger_url"),
-        article_title=data.get("article_title"),
-        theme_obj=data.get("theme_obj"),
-        items=data.get("items", [])
-    )
+    posted_history = load_posted_history()
+    target_post = None
+
+    for p in posts:
+        if p["slug"] not in posted_history:
+            target_post = p
+            break
+
+    if not target_post and posts:
+        target_post = posts[0]
+        print("[INFO] All posts in history. Selecting latest article for promotion.")
+
+    if not target_post:
+        print("[ERROR] No posts found to promote.")
+        sys.exit(1)
+
+    print(f"[TARGET] Article: {target_post['title']} ({target_post['slug']})")
+    success = post_article_to_bluesky(target_post)
     if not success:
         sys.exit(1)
 
